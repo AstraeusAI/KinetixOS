@@ -1,0 +1,16 @@
+[Unit]
+Description=Argus desktop-agent runtime
+After=graphical-session.target
+
+[Service]
+Type=simple
+Environment=ARGUS_GRANT_SCREEN=1
+Environment=ARGUS_GRANT_INPUT=0
+Environment=ARGUS_GRANT_SHELL=1
+Environment=ARGUS_GRANT_NET=1
+ExecStart=/usr/bin/python3 -u %h/Desktop/argus-os/runtime/argusd.py serve
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=default.target

@@ -1,0 +1,29 @@
+__pycache__/
+*.pyc
+*.pyo
+node_modules/
+.DS_Store
+*.swp
+*.log
+
+# Quickshell writes this as a symlink into a per-session runtime VFS path
+# under /run/user/<uid>/... every time the shell starts — machine- and
+# session-specific, not authored config (the real, portable qmlls config is
+# the root-level .qmlls.ini).
+/shell/.qmlls.ini
+
+# Unrelated content that happens to live alongside this repo, not part of
+# the argus-os project (see the commit that introduced this line).
+/ KinetixOS/
+/.opencode/
+/webos/
+/New Folder/
+
+# Reference corpus (third-party docs/examples pulled in for local research,
+# not this project's code) and the eval harness (versioned candidate
+# solutions + hidden grading probes — publishing it would leak the eval
+# methodology and contaminate future runs of it). Neither belongs in the
+# public repo. A stray pasted screenshot that landed in the repo root.
+/CodeCorpus/
+/kinetix-eval/
+/b149aa09-3729-4f4f-b2c2-0b0a66569d3c.png
