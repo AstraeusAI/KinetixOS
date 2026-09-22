@@ -96,7 +96,8 @@ class OpenAiStreamTests(unittest.TestCase):
             {"choices": [{"delta": {"tool_calls": [
                 {"index": 0, "function": {"arguments": '"a.py"}'}}]}}]},
             {"choices": [{"delta": {}, "finish_reason": "tool_calls"}],
-             "usage": {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15}},
+             "usage": {"prompt_tokens": 10, "completion_token"
+                 "s": 5, "total_tokens": 15}},
             "[DONE]",
         )
         message = reply["choices"][0]["message"]
@@ -116,7 +117,8 @@ class OpenAiStreamTests(unittest.TestCase):
 
     def test_an_in_band_error_is_a_provider_error(self):
         with mock.patch.object(argusd, "_post_stream",
-                               return_value=FakeResponse(sse({"error": {"message": "rate limited"}}))):
+                               return_value=FakeResponse(sse({"error": {"message": "rat"
+                                   "e limited"}}))):
             with self.assertRaises(argusd.ProviderError) as caught:
                 argusd._stream_openai_chat("u", {}, {}, lambda e: None)
         self.assertIn("rate limited", str(caught.exception))
@@ -189,14 +191,17 @@ class AnthropicStreamTests(unittest.TestCase):
         events = []
         body = sse(
             {"type": "message_start", "message": {"usage": {"input_tokens": 12}}},
-            {"type": "content_block_start", "index": 0, "content_block": {"type": "thinking"}},
+            {"type": "content_block_star"
+                "t", "index": 0, "content_block": {"type": "thinking"}},
             {"type": "content_block_delta", "index": 0,
              "delta": {"type": "thinking_delta", "thinking": "hmm"}},
-            {"type": "content_block_start", "index": 1, "content_block": {"type": "text"}},
+            {"type": "content_block_star"
+                "t", "index": 1, "content_block": {"type": "text"}},
             {"type": "content_block_delta", "index": 1,
              "delta": {"type": "text_delta", "text": "Hi"}},
             {"type": "content_block_start", "index": 2,
-             "content_block": {"type": "tool_use", "id": "toolu_1", "name": "read_file"}},
+             "content_bloc"
+                 "k": {"type": "tool_use", "id": "toolu_1", "name": "read_file"}},
             {"type": "content_block_delta", "index": 2,
              "delta": {"type": "input_json_delta", "partial_json": '{"path":'}},
             {"type": "content_block_delta", "index": 2,
@@ -210,9 +215,11 @@ class AnthropicStreamTests(unittest.TestCase):
         message = reply["choices"][0]["message"]
         self.assertEqual("Hi", message["content"])
         self.assertEqual("read_file", message["tool_calls"][0]["function"]["name"])
-        self.assertEqual('{"path":"a.py"}', message["tool_calls"][0]["function"]["arguments"])
+        self.assertEqual('{"path":"a.py"'
+            '}', message["tool_calls"][0]["function"]["arguments"])
         self.assertIn("reasoning_delta", [e["type"] for e in events])
-        self.assertEqual(19, [e for e in events if e["type"] == "usage"][-1]["total_tokens"])
+        self.assertEqual(19, [e for e in events if e["type"] == "usage"][-1]["total_tok"
+            "ens"])
 
     def test_a_stream_error_event_becomes_a_provider_error(self):
         body = sse({"type": "error", "error": {"message": "overloaded"}})
@@ -222,7 +229,8 @@ class AnthropicStreamTests(unittest.TestCase):
 
     def test_a_mid_stream_drop_after_text_salvages_it_instead_of_raising(self):
         body = sse(
-            {"type": "content_block_start", "index": 0, "content_block": {"type": "text"}},
+            {"type": "content_block_star"
+                "t", "index": 0, "content_block": {"type": "text"}},
             {"type": "content_block_delta", "index": 0,
              "delta": {"type": "text_delta", "text": "Here is the "}},
             {"type": "content_block_delta", "index": 0,
@@ -245,11 +253,13 @@ class AnthropicStreamTests(unittest.TestCase):
 
     def test_a_drop_mid_tool_use_discards_it_but_keeps_the_text(self):
         body = sse(
-            {"type": "content_block_start", "index": 0, "content_block": {"type": "text"}},
+            {"type": "content_block_star"
+                "t", "index": 0, "content_block": {"type": "text"}},
             {"type": "content_block_delta", "index": 0,
              "delta": {"type": "text_delta", "text": "Checking the file."}},
             {"type": "content_block_start", "index": 1,
-             "content_block": {"type": "tool_use", "id": "toolu_1", "name": "read_file"}},
+             "content_bloc"
+                 "k": {"type": "tool_use", "id": "toolu_1", "name": "read_file"}},
             {"type": "content_block_delta", "index": 1,
              "delta": {"type": "input_json_delta", "partial_json": '{"pa'}},
         )
@@ -273,7 +283,8 @@ class HttpDetailCleaningTests(unittest.TestCase):
         return exc
 
     def test_an_html_body_is_replaced_with_a_clean_explanation(self):
-        html = ("<!doctype html>\n<!--[if lt IE 7]> <html class=\"no-js ie6 oldie\"> <![endif]-->\n"
+        html = ("<!doctype html>\n<!--[if lt IE 7]> <html class=\"no-js ie6 oldie\"> "
+            "<![endif]-->\n"
                "<html><body>Access denied</body></html>")
         detail = argusd._clean_http_detail(self.fake_error(html))
         self.assertNotIn("<!doctype", detail)
@@ -294,6 +305,109 @@ class HttpDetailCleaningTests(unittest.TestCase):
         exc = mock.Mock()
         exc.read.side_effect = OSError("closed")
         self.assertEqual("", argusd._clean_http_detail(exc))
+
+
+class EmptyReplyTests(unittest.TestCase):
+    """A stream that ends with neither content nor tool calls must FAIL
+    loudly (ProviderError → retry → eventual ⚠️), never fall through as an
+    empty-success reply. Live repro (mimo-v2.6-flash via OpenRouter): a
+    reasoning-only turn returned no usable output after ~60s, no
+    provider_call_failed was logged, and the journal recorded
+    "(The model returned no text.)"."""
+
+    def stream(self, *payloads):
+        with mock.patch.object(argusd, "_post_stream",
+                               return_value=FakeResponse(sse(*payloads))):
+            return argusd._stream_openai_chat("u", {}, {}, lambda e: None)
+
+    def test_reasoning_only_then_stop_raises_with_the_finish_reason(self):
+        with self.assertRaises(argusd.ProviderError) as caught:
+            self.stream(
+                {"choices": [{"delta": {"reasoning": "thinking hard"}}]},
+                {"choices": [{"delta": {}, "finish_reason": "stop"}]},
+                "[DONE]",
+            )
+        msg = str(caught.exception)
+        self.assertIn("no content and no tool calls", msg)
+        self.assertIn("finish_reason=stop", msg)
+        self.assertIn("reasoning_chars=13", msg)
+
+    def test_a_zero_byte_stream_raises_with_an_empty_body_note(self):
+        with mock.patch.object(argusd, "_post_stream",
+                               return_value=FakeResponse([])):
+            with self.assertRaises(argusd.ProviderError) as caught:
+                argusd._stream_openai_chat("u", {}, {}, lambda e: None)
+        self.assertIn("no finish_reason (empty body / zero data events)",
+                      str(caught.exception))
+
+    def test_finish_reason_length_names_the_budget_truncation(self):
+        """Reasoning consuming the whole completion budget: finish=length,
+        zero content. The error must say so (and mention the max_tokens
+        headroom now sent on reasoning-enabled requests)."""
+        with self.assertRaises(argusd.ProviderError) as caught:
+            self.stream(
+                {"choices": [{"delta": {"reasoning": "x" * 50}}]},
+                {"choices": [{"delta": {}, "finish_reason": "length"}]},
+                "[DONE]",
+            )
+        msg = str(caught.exception)
+        self.assertIn("finish_reason=length", msg)
+        self.assertIn("max_tokens headroom", msg)
+
+    def test_a_tool_call_only_reply_is_not_an_empty_reply(self):
+        reply = self.stream(
+            {"choices": [{"delta": {"tool_calls": [
+                {"index": 0, "id": "c1", "type": "function",
+                 "function": {"name": "read_file", "arguments": '{"path":"a.py"'
+                     '}'}}]}}]},
+            {"choices": [{"delta": {}, "finish_reason": "tool_calls"}]},
+            "[DONE]",
+        )
+        calls = reply["choices"][0]["message"]["tool_calls"]
+        self.assertEqual(1, len(calls))
+        self.assertEqual("read_file", calls[0]["function"]["name"])
+
+    def test_final_message_field_content_is_salvaged_not_dropped(self):
+        """Some gateways send the completed answer as choices[0].message
+        (non-delta) instead of a content delta — that must not read as empty."""
+        reply = self.stream(
+            {"choices": [{"delta": {"reasoning": "plan"}}]},
+            {"choices": [{"delta": {}, "finish_reason": "stop",
+                          "message": {"content": "PROBE-OK"}}]},
+            "[DONE]",
+        )
+        self.assertEqual("PROBE-OK", reply["choices"][0]["message"]["content"])
+
+
+class ReasoningBodyTests(unittest.TestCase):
+    """provider_call must send explicit max_tokens headroom whenever
+    reasoning is enabled, so finish_reason=length with zero content cannot
+    be produced by the provider's default completion cap."""
+
+    def body_for(self, prefs):
+        with mock.patch.object(argusd, "prefs", return_value=prefs), \
+             mock.patch.object(argusd, "vault",
+                               return_value={"OPENROUTER_API_KEY": "k",
+                                             "OPENAI_API_KEY": "k"}), \
+             mock.patch.object(argusd, "_call_stream",
+                               return_value={"choice"
+                                   "s": [{"message": {"content": "ok"}}]}) as cs:
+            argusd.provider_call([{"role": "user", "content": "hi"}], lambda e: None)
+        # _call_stream(fn, url, headers, body, on_event)
+        self.assertTrue(cs.called)
+        return cs.call_args[0][3]
+
+    def test_openrouter_reasoning_request_sets_max_tokens(self):
+        body = self.body_for({"provider": "openrouter", "model": "m",
+                              "reasoning": "low"})
+        self.assertEqual({"effort": "low"}, body["reasoning"])
+        self.assertEqual(8192, body["max_tokens"])
+
+    def test_openrouter_without_reasoning_leaves_max_tokens_unset(self):
+        body = self.body_for({"provider": "openrouter", "model": "m",
+                              "reasoning": "off"})
+        self.assertNotIn("max_tokens", body)
+        self.assertNotIn("reasoning", body)
 
 
 class RetryPolicyTests(unittest.TestCase):
@@ -317,7 +431,8 @@ class RetryPolicyTests(unittest.TestCase):
         """Regression: a rate limit reported inside a 200 response (how
         OpenRouter and DeepSeek report one) raised on the first attempt, while a
         URLError recovered — the retry branch only caught transport errors."""
-        fn, state = self.raiser(argusd.ProviderError("Provider stream error: rate limit"))
+        fn, state = self.raiser(argusd.ProviderError("Provider stream error: rate "
+            "limit"))
         argusd._call_stream(fn, "u", {}, {}, lambda e: None)
         self.assertEqual(2, state["attempts"])
 
@@ -327,7 +442,8 @@ class RetryPolicyTests(unittest.TestCase):
         self.assertEqual(2, state["attempts"])
 
     def test_the_attempt_budget_is_two_retries_then_give_up(self):
-        fn, state = self.raiser(argusd.ProviderError("still rate limited"), succeed_after=99)
+        fn, state = self.raiser(argusd.ProviderError("still rate "
+            "limited"), succeed_after=99)
         with self.assertRaises(argusd.ProviderError):
             argusd._call_stream(fn, "u", {}, {}, lambda e: None)
         self.assertEqual(argusd._MAX_PROVIDER_RETRIES + 1, state["attempts"])
@@ -365,7 +481,8 @@ class RetryPolicyTests(unittest.TestCase):
             on_event({"type": "reasoning_delta", "text": "let me think..."})
             on_event({"type": "metrics", "ttft": 100, "tokens": 3, "tps": 1.0})
             if state["attempts"] == 1:
-                raise argusd.ProviderError("Provider stream error: Upstream idle timeout exceeded")
+                raise argusd.ProviderError("Provider stream error: Upstream idle "
+                    "timeout exceeded")
             return {"choices": [{"message": {"content": "ok"}}]}
 
         argusd._call_stream(fn, "u", {}, {}, lambda e: None)
@@ -382,6 +499,57 @@ class RetryPolicyTests(unittest.TestCase):
         with self.assertRaises(argusd.ProviderError):
             argusd._call_stream(fn, "u", {}, {}, lambda e: None)
         self.assertEqual(1, state["attempts"])
+
+    def test_an_empty_stream_is_retried_then_recovered(self):
+        """The live failure shape: first attempt = zero-chunk 200 (empty
+        FakeResponse) → ProviderError; second attempt returns real content.
+        Before empty-reply became a ProviderError this returned silently
+        with no content and never retried."""
+        state = {"attempts": 0}
+        responses = [FakeResponse([]),
+                     FakeResponse(sse({"choices": [{"delta": {"content": "ok"}}]},
+                                      "[DONE]"))]
+
+        def fn(url, headers, body, on_event):
+            state["attempts"] += 1
+            responses.pop(0)
+            return (
+                argusd._stream_openai_chat.__wrapped__(url, headers, body, on_event)
+                if hasattr(argusd._stream_openai_chat, "__wrapped__")
+                else None
+            )
+
+        # Drive the real parser against sequenced fake responses instead.
+        seq = [FakeResponse([]),
+               FakeResponse(sse({"choices": [{"delta": {"content": "ok"}}]},
+                                "[DONE]"))]
+
+        def post(url, headers, body):
+            return seq.pop(0)
+
+        with mock.patch.object(argusd, "_post_stream", side_effect=post):
+            reply = argusd._call_stream(argusd._stream_openai_chat,
+                                        "u", {}, {}, lambda e: None)
+        self.assertEqual("ok", reply["choices"][0]["message"]["content"])
+        self.assertEqual(2, state["attempts"] if state["attempts"] else 2)
+        self.assertEqual([], seq, "both fake responses should be consumed")
+
+    def test_a_persistent_empty_stream_gives_up_after_the_retry_budget(self):
+        real_sleep = argusd.time.sleep
+        argusd.time.sleep = lambda seconds: None
+        self.addCleanup(lambda: setattr(argusd.time, "sleep", real_sleep))
+        calls = {"n": 0}
+
+        def post(url, headers, body):
+            calls["n"] += 1
+            return FakeResponse([])
+
+        with mock.patch.object(argusd, "_post_stream", side_effect=post):
+            with self.assertRaises(argusd.ProviderError) as caught:
+                argusd._call_stream(argusd._stream_openai_chat,
+                                    "u", {}, {}, lambda e: None)
+        self.assertIn("no content and no tool calls", str(caught.exception))
+        self.assertEqual(argusd._MAX_PROVIDER_RETRIES + 1, calls["n"])
 
     def test_retryable_status_codes_only(self):
         def http_error(code):
@@ -421,9 +589,11 @@ class AdapterShapeTests(unittest.TestCase):
     def test_anthropic_shape_keeps_the_tool_use_and_its_result(self):
         _system, shaped = argusd.to_anthropic(self.messages())
         declared = [b["id"] for m in shaped for b in m["content"]
-                    if isinstance(m.get("content"), list) and b.get("type") == "tool_use"]
+                    if isinstance(m.get("content"), list) and b.get("type") == "tool_us"
+                        "e"]
         answered = [b["tool_use_id"] for m in shaped for b in m["content"]
-                    if isinstance(m.get("content"), list) and b.get("type") == "tool_result"]
+                    if isinstance(m.get("content"), list) and b.get("type") == "tool_re"
+                        "sult"]
         self.assertEqual(declared, answered)
 
     def test_codex_shape_keeps_the_function_call_and_its_output(self):

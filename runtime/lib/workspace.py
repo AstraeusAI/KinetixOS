@@ -5,6 +5,7 @@ touch what it was pointed at" is enforced in one place rather than trusted to
 each handler. Symlinks are resolved before the containment check, so a link
 inside the workspace cannot be used to reach outside it.
 """
+
 import functools
 import os
 import shutil
@@ -29,56 +30,123 @@ def _qt6_qml_tool(name):
             return candidate
     return name
 
+
 # extension → language id (LSP) and tooling
 LANGUAGES = {
-    ".py": "python", ".pyi": "python",
-    ".js": "javascript", ".mjs": "javascript", ".cjs": "javascript",
-    ".ts": "typescript", ".tsx": "typescriptreact", ".jsx": "javascriptreact",
-    ".qml": "qml", ".qmltypes": "qml",
-    ".c": "c", ".h": "c", ".cc": "cpp", ".cpp": "cpp", ".hpp": "cpp",
-    ".rs": "rust", ".go": "go", ".lua": "lua",
-    ".sh": "shellscript", ".bash": "shellscript", ".zsh": "shellscript",
-    ".json": "json", ".toml": "toml", ".yaml": "yaml", ".yml": "yaml",
-    ".md": "markdown", ".css": "css", ".html": "html",
+    ".py": "python",
+    ".pyi": "python",
+    ".js": "javascript",
+    ".mjs": "javascript",
+    ".cjs": "javascript",
+    ".ts": "typescript",
+    ".tsx": "typescriptreact",
+    ".jsx": "javascriptreact",
+    ".qml": "qml",
+    ".qmltypes": "qml",
+    ".c": "c",
+    ".h": "c",
+    ".cc": "cpp",
+    ".cpp": "cpp",
+    ".hpp": "cpp",
+    ".rs": "rust",
+    ".go": "go",
+    ".lua": "lua",
+    ".sh": "shellscript",
+    ".bash": "shellscript",
+    ".zsh": "shellscript",
+    ".json": "json",
+    ".toml": "toml",
+    ".yaml": "yaml",
+    ".yml": "yaml",
+    ".md": "markdown",
+    ".css": "css",
+    ".html": "html",
 }
 
 # marker file → project kind
 MARKERS = [
-    ("pyproject.toml", "python"), ("setup.py", "python"), ("requirements.txt", "python"),
-    ("package.json", "node"), ("Cargo.toml", "rust"), ("go.mod", "go"),
-    ("CMakeLists.txt", "cmake"), ("shell.qml", "quickshell"),
+    ("pyproject.toml", "python"),
+    ("setup.py", "python"),
+    ("requirements.txt", "python"),
+    ("package.json", "node"),
+    ("Cargo.toml", "rust"),
+    ("go.mod", "go"),
+    ("CMakeLists.txt", "cmake"),
+    ("shell.qml", "quickshell"),
     ("Makefile", "make"),
 ]
 
 # per-language verification commands (only used when the binary exists)
 VERIFY = {
-    "python":     {"syntax": ["python3", "-m", "py_compile"],
-                   # E501 included deliberately: the eval record shows line
-                   # length is the single most common surviving style defect
-                   # (11 violations shipped under default rules), and the
-                   # agent's own "lint passed" claims were true-but-incomplete
-                   # because the default ruleset never checked it.
-                   "format": ["ruff", "format"], "lint": ["ruff", "check", "--select", "E,F"],
-                   "test": ["python3", "-m", "pytest", "-q"]},
-    "javascript": {"syntax": ["node", "--check"], "format": ["prettier", "--write"],
-                   "lint": ["eslint"], "test": ["npm", "test", "--silent"]},
-    "typescript": {"syntax": ["node", "--check"], "format": ["prettier", "--write"],
-                   "lint": ["eslint"], "test": ["npm", "test", "--silent"]},
-    "qml":        {"syntax": [_qt6_qml_tool("qmllint")], "format": [_qt6_qml_tool("qmlformat"), "-i"],
-                   "lint": [_qt6_qml_tool("qmllint")], "test": None},
-    "rust":       {"syntax": ["rustc", "--edition", "2021", "--emit=metadata", "--crate-type=lib"],
-                   "format": ["rustfmt"], "lint": ["cargo", "clippy"], "test": ["cargo", "test"]},
-    "c":          {"syntax": ["gcc", "-fsyntax-only"], "format": ["clang-format", "-i"],
-                   "lint": ["clang-tidy"], "test": None},
-    "cpp":        {"syntax": ["g++", "-fsyntax-only"], "format": ["clang-format", "-i"],
-                   "lint": ["clang-tidy"], "test": None},
-    "shellscript": {"syntax": ["bash", "-n"], "format": ["shfmt", "-w"],
-                    "lint": ["shellcheck"], "test": None},
-    "lua":        {"syntax": ["luac", "-p"], "format": ["stylua"], "lint": None, "test": None},
+    "python": {
+        "syntax": ["python3", "-m", "py_compile"],
+        # E501 included deliberately: the eval record shows line
+        # length is the single most common surviving style defect
+        # (11 violations shipped under default rules), and the
+        # agent's own "lint passed" claims were true-but-incomplete
+        # because the default ruleset never checked it.
+        "format": ["ruff", "format"],
+        "lint": ["ruff", "check", "--select", "E,F"],
+        "test": ["python3", "-m", "pytest", "-q"],
+    },
+    "javascript": {
+        "syntax": ["node", "--check"],
+        "format": ["prettier", "--write"],
+        "lint": ["eslint"],
+        "test": ["npm", "test", "--silent"],
+    },
+    "typescript": {
+        "syntax": ["node", "--check"],
+        "format": ["prettier", "--write"],
+        "lint": ["eslint"],
+        "test": ["npm", "test", "--silent"],
+    },
+    "qml": {
+        "syntax": [_qt6_qml_tool("qmllint")],
+        "format": [_qt6_qml_tool("qmlformat"), "-i"],
+        "lint": [_qt6_qml_tool("qmllint")],
+        "test": None,
+    },
+    "rust": {
+        "syntax": ["rustc", "--edition", "2021", "--emit=metadata", "--crate-type=lib"],
+        "format": ["rustfmt"],
+        "lint": ["cargo", "clippy"],
+        "test": ["cargo", "test"],
+    },
+    "c": {
+        "syntax": ["gcc", "-fsyntax-only"],
+        "format": ["clang-format", "-i"],
+        "lint": ["clang-tidy"],
+        "test": None,
+    },
+    "cpp": {
+        "syntax": ["g++", "-fsyntax-only"],
+        "format": ["clang-format", "-i"],
+        "lint": ["clang-tidy"],
+        "test": None,
+    },
+    "shellscript": {
+        "syntax": ["bash", "-n"],
+        "format": ["shfmt", "-w"],
+        "lint": ["shellcheck"],
+        "test": None,
+    },
+    "lua": {"syntax": ["luac", "-p"], "format": ["stylua"], "lint": None, "test": None},
 }
 
-IGNORE_DIRS = {".git", "node_modules", "__pycache__", ".venv", "venv", "target",
-               "dist", "build", ".cache", ".mypy_cache", ".pytest_cache"}
+IGNORE_DIRS = {
+    ".git",
+    "node_modules",
+    "__pycache__",
+    ".venv",
+    "venv",
+    "target",
+    "dist",
+    "build",
+    ".cache",
+    ".mypy_cache",
+    ".pytest_cache",
+}
 
 
 def _which(cmd):
@@ -131,7 +199,9 @@ class Workspace:
         target = p.resolve() if p.exists() else p.parent.resolve() / p.name
         allowed_roots = (self.root, Path.home())
         if not any(target == r or r in target.parents for r in allowed_roots):
-            raise PermissionError(f"path escapes both the workspace and the home directory: {path}")
+            raise PermissionError(
+                f"path escapes both the workspace and the home directory: {path}"
+            )
         if must_exist and not target.exists():
             raise FileNotFoundError(str(target))
         return target
@@ -148,9 +218,12 @@ class Workspace:
 
     def project(self):
         kinds = [k for marker, k in MARKERS if (self.root / marker).exists()]
-        return {"root": str(self.root), "kinds": kinds,
-                "kind": kinds[0] if kinds else "generic",
-                "git": (self.root / ".git").exists()}
+        return {
+            "root": str(self.root),
+            "kinds": kinds,
+            "kind": kinds[0] if kinds else "generic",
+            "git": (self.root / ".git").exists(),
+        }
 
     def tooling(self, path):
         """Which verify commands are actually runnable for this file.
@@ -159,8 +232,7 @@ class Workspace:
         runner is only offered when the module actually imports, otherwise the
         agent would be told pytest exists and then fail confusingly.
         """
-        import shutil
-        import subprocess
+
         lang = self.language(path)
         spec = VERIFY.get(lang, {})
         out = {}
@@ -186,11 +258,17 @@ class Workspace:
         # (pytest/unittest's importability isn't going to flip between one
         # edit and the next).
         import subprocess
-        for probe, cmd in ((("import", "pytest"), ["python3", "-m", "pytest", "-q"]),
-                           (("import", "unittest"), ["python3", "-m", "unittest", "discover", "-q"])):
+
+        for probe, cmd in (
+            (("import", "pytest"), ["python3", "-m", "pytest", "-q"]),
+            (("import", "unittest"), ["python3", "-m", "unittest", "discover", "-q"]),
+        ):
             try:
-                r = subprocess.run(["python3", "-c", f"{probe[0]} {probe[1]}"],
-                                   capture_output=True, timeout=10)
+                r = subprocess.run(
+                    ["python3", "-c", f"{probe[0]} {probe[1]}"],
+                    capture_output=True,
+                    timeout=10,
+                )
                 if r.returncode == 0:
                     return cmd
             except Exception:
@@ -202,7 +280,9 @@ class Workspace:
         base = self.resolve(subdir)
         out = []
         for dirpath, dirnames, filenames in os.walk(base):
-            dirnames[:] = [d for d in dirnames if d not in IGNORE_DIRS and not d.startswith(".git")]
+            dirnames[:] = [
+                d for d in dirnames if d not in IGNORE_DIRS and not d.startswith(".git")
+            ]
             for f in filenames:
                 out.append(Path(dirpath) / f)
                 if len(out) >= limit:

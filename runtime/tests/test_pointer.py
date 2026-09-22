@@ -69,8 +69,10 @@ class PlacePointerTests(unittest.TestCase):
     def test_already_there_makes_no_move_calls(self):
         fake = FakeDesktop(x=500, y=400)
         p1, p2 = patched(fake)
-        p1.start(); p2.start()
-        self.addCleanup(p1.stop); self.addCleanup(p2.stop)
+        p1.start()
+        p2.start()
+        self.addCleanup(p1.stop)
+        self.addCleanup(p2.stop)
         r = kwin._place_pointer(502, 401)
         self.assertTrue(r["ok"])
         self.assertEqual(r["corrections"], 0)
@@ -80,8 +82,10 @@ class PlacePointerTests(unittest.TestCase):
     def test_exact_move_converges_in_one_round(self):
         fake = FakeDesktop(x=100, y=100, factor=1.0)
         p1, p2 = patched(fake)
-        p1.start(); p2.start()
-        self.addCleanup(p1.stop); self.addCleanup(p2.stop)
+        p1.start()
+        p2.start()
+        self.addCleanup(p1.stop)
+        self.addCleanup(p2.stop)
         r = kwin._place_pointer(300, 200)
         self.assertTrue(r["ok"])
         self.assertEqual((r["x"], r["y"]), (300, 200))
@@ -92,8 +96,10 @@ class PlacePointerTests(unittest.TestCase):
         """1.6x acceleration overshoots every move; the loop must correct."""
         fake = FakeDesktop(x=100, y=100, factor=1.6)
         p1, p2 = patched(fake)
-        p1.start(); p2.start()
-        self.addCleanup(p1.stop); self.addCleanup(p2.stop)
+        p1.start()
+        p2.start()
+        self.addCleanup(p1.stop)
+        self.addCleanup(p2.stop)
         r = kwin._place_pointer(1100, 800)
         self.assertTrue(r["ok"], r)
         self.assertLessEqual(abs(r["x"] - 1100), kwin.POINTER_TOLERANCE_PX)
@@ -104,8 +110,10 @@ class PlacePointerTests(unittest.TestCase):
         """A cursor that never moves: ok False, but x/y say where it is."""
         fake = FakeDesktop(x=100, y=100, factor=0.0)
         p1, p2 = patched(fake)
-        p1.start(); p2.start()
-        self.addCleanup(p1.stop); self.addCleanup(p2.stop)
+        p1.start()
+        p2.start()
+        self.addCleanup(p1.stop)
+        self.addCleanup(p2.stop)
         r = kwin._place_pointer(900, 700)
         self.assertFalse(r["ok"])
         self.assertEqual((r["x"], r["y"]), (100, 100))
@@ -114,7 +122,8 @@ class PlacePointerTests(unittest.TestCase):
     def test_unreadable_cursor_falls_back_to_absolute_unverified(self):
         fake = FakeDesktop()
         p2 = mock.patch.object(kwin, "_ydotool", fake.ydotool)
-        p2.start(); self.addCleanup(p2.stop)
+        p2.start()
+        self.addCleanup(p2.stop)
         with mock.patch.object(kwin, "cursor_position",
                                return_value={"ok": False, "error": "no bus"}):
             r = kwin._place_pointer(400, 300)
@@ -126,8 +135,10 @@ class ClickDragTests(unittest.TestCase):
     def test_click_places_then_clicks_at_current_position(self):
         fake = FakeDesktop(x=0, y=0, factor=1.0)
         p1, p2 = patched(fake)
-        p1.start(); p2.start()
-        self.addCleanup(p1.stop); self.addCleanup(p2.stop)
+        p1.start()
+        p2.start()
+        self.addCleanup(p1.stop)
+        self.addCleanup(p2.stop)
         r = kwin.click(640, 480, "left", 1)
         self.assertTrue(r["ok"], r)
         self.assertEqual((r["x"], r["y"]), (640, 480))
@@ -138,8 +149,10 @@ class ClickDragTests(unittest.TestCase):
     def test_click_reports_placement_failure_without_clicking(self):
         fake = FakeDesktop(x=0, y=0, factor=0.0)
         p1, p2 = patched(fake)
-        p1.start(); p2.start()
-        self.addCleanup(p1.stop); self.addCleanup(p2.stop)
+        p1.start()
+        p2.start()
+        self.addCleanup(p1.stop)
+        self.addCleanup(p2.stop)
         r = kwin.click(640, 480, "left", 1)
         self.assertFalse(r["ok"])
         self.assertNotIn("click", [c[0] for c in fake.calls])
@@ -147,8 +160,10 @@ class ClickDragTests(unittest.TestCase):
     def test_drag_is_down_move_up_with_measured_ends(self):
         fake = FakeDesktop(x=0, y=0, factor=1.0)
         p1, p2 = patched(fake)
-        p1.start(); p2.start()
-        self.addCleanup(p1.stop); self.addCleanup(p2.stop)
+        p1.start()
+        p2.start()
+        self.addCleanup(p1.stop)
+        self.addCleanup(p2.stop)
         with mock.patch("time.sleep"):
             r = kwin.drag(100, 100, 400, 300)
         self.assertTrue(r["ok"], r)
@@ -175,8 +190,10 @@ class ClickDragTests(unittest.TestCase):
 
         p1 = mock.patch.object(kwin, "cursor_position", fake.cursor_position)
         p2 = mock.patch.object(kwin, "_ydotool", flaky_ydotool)
-        p1.start(); p2.start()
-        self.addCleanup(p1.stop); self.addCleanup(p2.stop)
+        p1.start()
+        p2.start()
+        self.addCleanup(p1.stop)
+        self.addCleanup(p2.stop)
         with mock.patch("time.sleep"):
             r = kwin.drag(100, 100, 900, 700)
         self.assertFalse(r["ok"])
@@ -186,26 +203,34 @@ class ClickDragTests(unittest.TestCase):
     def test_click_with_modifiers_presses_and_releases_modifier_keys(self):
         fake = FakeDesktop(x=0, y=0, factor=1.0)
         p1, p2 = patched(fake)
-        p1.start(); p2.start()
-        self.addCleanup(p1.stop); self.addCleanup(p2.stop)
+        p1.start()
+        p2.start()
+        self.addCleanup(p1.stop)
+        self.addCleanup(p2.stop)
         r = kwin.click(100, 100, "left", 1, modifiers=["ctrl", "shift"])
         self.assertTrue(r["ok"], r)
         self.assertEqual(r["modifiers"], ["ctrl", "shift"])
         key_calls = [c for c in fake.calls if c[0] == "key"]
-        self.assertEqual(key_calls, [["key", "29:1"], ["key", "42:1"], ["key", "42:0"], ["key", "29:0"]])
+        self.assertEqual(key_calls, [["key", "29:"
+            "1"], ["key", "42:1"], ["key", "42:0"], ["key", "29:0"]])
 
     def test_drag_with_steps_emits_intermediate_motion_ticks(self):
         fake = FakeDesktop(x=0, y=0, factor=1.0)
         p1, p2 = patched(fake)
-        p1.start(); p2.start()
-        self.addCleanup(p1.stop); self.addCleanup(p2.stop)
+        p1.start()
+        p2.start()
+        self.addCleanup(p1.stop)
+        self.addCleanup(p2.stop)
         with mock.patch("time.sleep"):
             r = kwin.drag(0, 0, 100, 100, steps=5)
         self.assertTrue(r["ok"], r)
         # Verify intermediate relative moves occurred while mouse was held down
-        down_idx = next(i for i, c in enumerate(fake.calls) if c[0] == "click" and c[-1] == "0x40")
-        up_idx = next(i for i, c in enumerate(fake.calls) if c[0] == "click" and c[-1] == "0x80")
-        mid_moves = [c for c in fake.calls[down_idx + 1:up_idx] if c[0] == "mousemove" and "-x" in c]
+        down_idx = next(i for i, c in enumerate(fake.calls) if c[0] == "clic"
+            "k" and c[-1] == "0x40")
+        up_idx = next(i for i, c in enumerate(fake.calls) if c[0] == "clic"
+            "k" and c[-1] == "0x80")
+        mid_moves = [c for c in fake.calls[down_idx + 1:up_idx] if c[0] == "mousemov"
+            "e" and "-x" in c]
         self.assertGreaterEqual(len(mid_moves), 4)
 
 
@@ -225,8 +250,10 @@ class HoverAndScrollTests(unittest.TestCase):
     def test_hover_dwells_at_target_position(self):
         fake = FakeDesktop(x=0, y=0, factor=1.0)
         p1, p2 = patched(fake)
-        p1.start(); p2.start()
-        self.addCleanup(p1.stop); self.addCleanup(p2.stop)
+        p1.start()
+        p2.start()
+        self.addCleanup(p1.stop)
+        self.addCleanup(p2.stop)
         with mock.patch("time.sleep") as mock_sleep:
             r = kwin.hover(150, 250, duration=0.5)
         self.assertTrue(r["ok"], r)
@@ -237,8 +264,10 @@ class HoverAndScrollTests(unittest.TestCase):
     def test_scroll_directional_delts(self):
         fake = FakeDesktop(x=50, y=50, factor=1.0)
         p1, p2 = patched(fake)
-        p1.start(); p2.start()
-        self.addCleanup(p1.stop); self.addCleanup(p2.stop)
+        p1.start()
+        p2.start()
+        self.addCleanup(p1.stop)
+        self.addCleanup(p2.stop)
 
         # Down scroll (default)
         r_down = kwin.scroll(4, direction="down")

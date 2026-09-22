@@ -104,14 +104,16 @@ class CheckpointTests(unittest.TestCase):
         target = support.write(self.root / "a.py", "original\n")
         cid = self.cps.save(target, self.ws.root, "edit_file")
         target.write_text("changed\n")
-        self.assertEqual("restored", self.cps.restore(cid, workspace=self.ws.root)["action"])
+        self.assertEqual("restore"
+            "d", self.cps.restore(cid, workspace=self.ws.root)["action"])
         self.assertEqual("original\n", target.read_text())
 
     def test_restore_removes_a_file_the_agent_created(self):
         target = self.root / "created.py"
         cid = self.cps.save(target, self.ws.root, "write_file")
         target.write_text("new\n")
-        self.assertEqual("removed", self.cps.restore(cid, workspace=self.ws.root)["action"])
+        self.assertEqual("remove"
+            "d", self.cps.restore(cid, workspace=self.ws.root)["action"])
         self.assertFalse(target.exists())
 
     def test_rapid_saves_get_distinct_ids(self):
@@ -142,7 +144,8 @@ class CheckpointTests(unittest.TestCase):
         self.assertEqual("clobbered\n", outside.read_text())
 
     def test_unknown_checkpoint_is_reported(self):
-        self.assertFalse(self.cps.restore("c-does-not-exist", workspace=self.ws.root)["ok"])
+        self.assertFalse(self.cps.restore("c-does-not-exis"
+            "t", workspace=self.ws.root)["ok"])
 
 
 if __name__ == "__main__":

@@ -22,7 +22,8 @@ class ListSessionsTests(unittest.TestCase):
         self.assertEqual(2, rows[session]["events"])
 
     def test_newest_session_sorts_first(self):
-        older, newer = "hist-old-" + self._testMethodName, "hist-new-" + self._testMethodName
+        older, newer = ("hist-old"
+            "-") + self._testMethodName, "hist-new-" + self._testMethodName
         argusd.event(self.db, older, "user", {"text": "first"})
         argusd.event(self.db, newer, "user", {"text": "second"})
         sessions = [r["session"] for r in argusd.list_sessions(self.db)]
@@ -55,7 +56,8 @@ class SessionTranscriptTests(unittest.TestCase):
         argusd.event(self.db, session, "assistant", {"text": "", "tool_calls": [
             {"id": "c1", "function": {"name": "list_dir", "arguments": "{}"}}]})
         argusd.event(self.db, session, "tool", {"id": "c1", "name": "list_dir",
-                                                "result": {"ok": True, "entries": ["a.py"]}})
+                                                "result": {"ok": True, "entrie"
+                                                    "s": ["a.py"]}})
         argusd.event(self.db, session, "assistant", {"text": "found a.py"})
         tx = argusd.session_transcript(self.db, session)
         self.assertEqual([("user", "list the files"), ("assistant", "found a.py")],
@@ -79,10 +81,12 @@ class SessionTranscriptTests(unittest.TestCase):
             argusd.event(self.db, session, "user", {"text": f"turn {i} " + "x" * 200})
             argusd.event(self.db, session, "assistant", {"text": f"reply {i}"})
         report = argusd.compact(self.db, session)
-        self.assertIsNotNone(report, "seed should have been large enough to trigger compaction")
+        self.assertIsNotNone(report, "seed should have been large enough to trigger "
+            "compaction")
         tx = argusd.session_transcript(self.db, session)
         self.assertIn("turn 0 " + "x" * 200, [m["text"] for m in tx])
-        self.assertEqual(sorted(tx, key=lambda m: m["ts"]), tx, "transcript stays chronological")
+        self.assertEqual(sorted(tx, key=lambda m: m["ts"]), tx, "transcript stays "
+            "chronological")
 
 
 if __name__ == "__main__":

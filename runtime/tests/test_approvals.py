@@ -36,7 +36,8 @@ class FakeProvider:
 
     def system_text(self, turn=0):
         return "\n".join(m["content"] for m in self.prompts[turn]
-                         if m.get("role") == "system" and isinstance(m.get("content"), str))
+                         if m.get("role") == "system" and isinstance(m.get("conten"
+                             "t"), str))
 
 
 class ApprovalTestCase(unittest.TestCase):
@@ -44,7 +45,8 @@ class ApprovalTestCase(unittest.TestCase):
         self.ws = support.make_workspace("ws-approvals")
         support.write(self.ws / "a.py", "x = 1\n")
         self.session = "appr-" + self._testMethodName
-        for patch in (mock.patch.object(argusd.kwin, "capabilities", support.kwin_capabilities),
+        for patch in (mock.patch.object(argusd.kwin, "capabilitie"
+            "s", support.kwin_capabilities),
                       mock.patch.object(argusd.sandbox, "run", support.sandbox_stub())):
             patch.start()
             self.addCleanup(patch.stop)
@@ -53,12 +55,16 @@ class ApprovalTestCase(unittest.TestCase):
         return support.declared_and_answered(argusd.connect(), self.session)
 
     def journal_order(self):
-        return [(kind, json.loads(payload)) for kind, payload in argusd.connect().execute(
-            "SELECT kind,payload FROM events WHERE session=? ORDER BY id", (self.session,))]
+        rows = argusd.connect().execute(
+            "SELECT kind,payload FROM events WHERE session=? ORDER BY id",
+            (self.session,),
+        )
+        return [(kind, json.loads(payload)) for kind, payload in rows]
 
     def assert_no_duplicate_answers(self):
         _declared, answered = self.journal()
-        self.assertEqual(len(answered), len(set(answered)), "exactly one result per call id")
+        self.assertEqual(len(answered), len(set(answered)), "exactly one result per "
+            "call id")
 
     def assert_results_follow_the_declaring_turn(self):
         """The three results must be the messages immediately after the assistant
@@ -70,11 +76,13 @@ class ApprovalTestCase(unittest.TestCase):
                      if kind == "assistant" and body.get("tool_calls"))
         following = order[index + 1:index + 4]
         self.assertEqual(["tool"] * 3, [kind for kind, _ in following])
-        self.assertEqual(["call_1", "call_2", "call_3"], [body["id"] for _, body in following])
+        self.assertEqual(["call_"
+            "1", "call_2", "call_3"], [body["id"] for _, body in following])
 
     def tool_result(self, call_id):
         for (payload,) in argusd.connect().execute(
-                "SELECT payload FROM events WHERE session=? AND kind='tool' ORDER BY id",
+                "SELECT payload FROM events WHERE session=? AND kind='tool' ORDER BY "
+                    "id",
                 (self.session,)):
             body = json.loads(payload)
             if body.get("id") == call_id:
@@ -83,7 +91,8 @@ class ApprovalTestCase(unittest.TestCase):
 
     def approval_row(self, approval_id):
         return argusd.connect().execute(
-            "SELECT tool,call_id,status FROM approvals WHERE id=?", (approval_id,)).fetchone()
+            "SELECT tool,call_id,status FROM approvals WHERE "
+                "id=?", (approval_id,)).fetchone()
 
     def assert_history_is_answerable(self):
         declared, answered = self.journal()
@@ -101,44 +110,53 @@ class VerificationNudgeTests(ApprovalTestCase):
         super().setUp()
         patch = mock.patch.object(
             argusd.Workspace, "tooling",
-            lambda self, path: {"language": "python", "commands": {"test": ["pytest", "-q"]}})
+            lambda self, path: {"languag"
+                "e": "python", "commands": {"test": ["pytest", "-q"]}})
         patch.start()
         self.addCleanup(patch.stop)
 
     def test_finishing_after_a_write_with_no_test_run_gets_nudged_once(self):
         provider = FakeProvider(
             {"content": "", "tool_calls": [
-                support.call("c1", "write_file", {"path": "a.py", "content": "x = 2\n"})]},
-            {"content": "Done, changed a.py."},   # tries to finish without verifying — nudged
-            {"content": "This was a trivial change, no test needed."},   # second attempt sticks
+                support.call("c1", "write_fil"
+                    "e", {"path": "a.py", "content": "x = 2\n"})]},
+            {"content": "Done, changed "
+                "a.py."},   # tries to finish without verifying — nudged
+            {"content": "This was a trivial change, no test "
+                "needed."},   # second attempt sticks
         )
         with mock.patch.object(argusd, "provider_call", provider):
             result = argusd.run("change a.py", self.session, str(self.ws))
         self.assertTrue(result["ok"])
-        self.assertEqual(3, provider.calls, "the nudge should have bought exactly one more turn")
+        self.assertEqual(3, provider.calls, "the nudge should have bought exactly one "
+            "more turn")
         self.assertEqual("This was a trivial change, no test needed.", result["text"])
         prompts = [m for m in self.journal_order() if m[0] == "user"]
-        self.assertTrue(any("never ran run_tests" in body.get("text", "") for _, body in prompts))
+        self.assertTrue(any("never ran "
+            "run_tests" in body.get("text", "") for _, body in prompts))
 
     def test_a_second_finish_attempt_is_not_nudged_again(self):
         """Confirms the one-shot flag actually gates the *second* attempt —
         not just that some later reply happens to be accepted."""
         provider = FakeProvider(
             {"content": "", "tool_calls": [
-                support.call("c1", "write_file", {"path": "a.py", "content": "x = 2\n"})]},
+                support.call("c1", "write_fil"
+                    "e", {"path": "a.py", "content": "x = 2\n"})]},
             {"content": "Still not verifying, first attempt."},
             {"content": "Still not verifying, second attempt."},
         )
         with mock.patch.object(argusd, "provider_call", provider):
             result = argusd.run("change a.py", self.session, str(self.ws))
         self.assertTrue(result["ok"])
-        self.assertEqual(3, provider.calls, "only the first no-tool-call reply should be nudged")
+        self.assertEqual(3, provider.calls, "only the first no-tool-call reply should "
+            "be nudged")
         self.assertEqual("Still not verifying, second attempt.", result["text"])
 
     def test_running_tests_before_finishing_needs_no_nudge(self):
         provider = FakeProvider(
             {"content": "", "tool_calls": [
-                support.call("c1", "write_file", {"path": "a.py", "content": "x = 2\n"})]},
+                support.call("c1", "write_fil"
+                    "e", {"path": "a.py", "content": "x = 2\n"})]},
             {"content": "", "tool_calls": [support.call("c2", "run_tests", {})]},
             {"content": "Done and verified."},
         )
@@ -165,7 +183,8 @@ class ApprovalHistoryTests(ApprovalTestCase):
         provider = FakeProvider(
             {"content": "", "tool_calls": [
                 support.call("call_1", "read_file", {"path": "a.py"}),
-                support.call("call_2", "run_command", {"command": "touch /tmp/argus-x"}),
+                support.call("call_2", "run_command", {"command": "touch "
+                    "/tmp/argus-x"}),
                 support.call("call_3", "glob", {"pattern": "*.py"}),
             ]},
             {"content": "All done."},
@@ -186,15 +205,18 @@ class ApprovalHistoryTests(ApprovalTestCase):
         self.assertIn("awaiting user approval", placeholder["error"])
 
         approval_id = paused["approval"]["id"]
-        self.assertEqual(("run_command", "call_2", "pending"), self.approval_row(approval_id))
+        self.assertEqual(("run_comman"
+            "d", "call_2", "pending"), self.approval_row(approval_id))
 
         with mock.patch.object(argusd, "provider_call", provider):
             done = argusd.approve(approval_id, True, str(self.ws))
 
         self.assertTrue(done["ok"])
         self.assertEqual("All done.", done["text"])
-        self.assertEqual(2, provider.calls, "the task should have resumed after approval")
-        self.assertEqual(("run_command", "call_2", "executed"), self.approval_row(approval_id))
+        self.assertEqual(2, provider.calls, "the task should have resumed after "
+            "approval")
+        self.assertEqual(("run_comman"
+            "d", "call_2", "executed"), self.approval_row(approval_id))
         self.assertTrue(self.tool_result("call_2")["ok"])
         self.assert_history_is_answerable()
         self.assert_no_duplicate_answers()
@@ -242,10 +264,12 @@ class ApprovalHistoryTests(ApprovalTestCase):
         argusd.set_state(db, self.session, "current_task", "the original task")
         provider = FakeProvider({"content": "finished"})
         with mock.patch.object(argusd, "provider_call", provider):
-            result = argusd.run("Continue the previous task.", self.session, str(self.ws),
+            result = argusd.run("Continue the previous "
+                "task.", self.session, str(self.ws),
                                 is_continuation=True)
         self.assertTrue(result["ok"])
-        self.assertEqual("the original task", argusd.get_state(db, self.session, "current_task"))
+        self.assertEqual("the original "
+            "task", argusd.get_state(db, self.session, "current_task"))
         self.assertIn("the original task", provider.system_text())
 
     def test_a_continuation_uses_the_original_tasks_step_budget(self):
@@ -255,7 +279,8 @@ class ApprovalHistoryTests(ApprovalTestCase):
         provider = FakeProvider({"content": "should not be reached"})
         with mock.patch.object(argusd, "MAX_STEPS", 2), \
              mock.patch.object(argusd, "provider_call", provider):
-            result = argusd.run("Continue the previous task.", self.session, str(self.ws),
+            result = argusd.run("Continue the previous "
+                "task.", self.session, str(self.ws),
                                 is_continuation=True)
         self.assertFalse(result["ok"])
         self.assertIn("2 tool steps", result["text"])
@@ -268,7 +293,8 @@ class ApprovalHistoryTests(ApprovalTestCase):
         provider = FakeProvider({"content": "should not be reached"})
         with mock.patch.object(argusd, "MAX_TASK_SECONDS", 1), \
              mock.patch.object(argusd, "provider_call", provider):
-            result = argusd.run("Continue the previous task.", self.session, str(self.ws),
+            result = argusd.run("Continue the previous "
+                "task.", self.session, str(self.ws),
                                 is_continuation=True)
         self.assertFalse(result["ok"])
         self.assertIn("cumulative task budget", result["text"])
@@ -280,7 +306,8 @@ class ApprovalHistoryTests(ApprovalTestCase):
         provider = FakeProvider({"content": "ok"})
         with mock.patch.object(argusd, "provider_call", provider):
             argusd.run("a brand new task", self.session, str(self.ws))
-        self.assertEqual("a brand new task", argusd.get_state(db, self.session, "current_task"))
+        self.assertEqual("a brand new "
+            "task", argusd.get_state(db, self.session, "current_task"))
         self.assertIn("a brand new task", provider.system_text())
         self.assertNotIn("the old task", provider.system_text())
 
@@ -306,11 +333,15 @@ class AlwaysApprovalSubjectTests(ApprovalTestCase):
         self.subject = "fake." + self._testMethodName
         fake_tool = {
             "name": "mcp__fake__echo", "description": "", "grant": "mcp",
-            "parameters": {"type": "object", "properties": {"message": {"type": "string"}}},
+            "parameter"
+                "s": {"type": "object", "properties": {"message": {"type": "string"}}},
             "risk": "soft", "mutates": False, "verify": [], "needs_grant": None,
             "sandboxed": False,
             "subject": lambda ctx, args: [self.subject],
-            "handler": lambda ctx, args: {"ok": True, "content": "echo: " + args.get("message", "")},
+            "handler": lambda ctx, args: {
+                "ok": True,
+                "content": "echo: " + args.get("message", ""),
+            },
         }
         patch = mock.patch.dict(argusd.toolreg.REGISTRY, {"mcp__fake__echo": fake_tool})
         patch.start()
@@ -318,7 +349,8 @@ class AlwaysApprovalSubjectTests(ApprovalTestCase):
 
     def test_always_allow_persists_a_rule_keyed_on_the_tools_declared_subject(self):
         provider = FakeProvider(
-            {"content": "", "tool_calls": [support.call("c1", "mcp__fake__echo", {"message": "hi"})]},
+            {"content": "", "tool_calls": [support.call("c1", "mcp__fake__ech"
+                "o", {"message": "hi"})]},
             {"content": "done"},
         )
         with mock.patch.object(argusd, "provider_call", provider):
@@ -335,7 +367,8 @@ class AlwaysApprovalSubjectTests(ApprovalTestCase):
 
     def test_a_second_identical_call_auto_approves_after_always(self):
         first = FakeProvider(
-            {"content": "", "tool_calls": [support.call("c1", "mcp__fake__echo", {"message": "hi"})]})
+            {"content": "", "tool_calls": [support.call("c1", "mcp__fake__ech"
+                "o", {"message": "hi"})]})
         with mock.patch.object(argusd, "provider_call", first):
             paused = argusd.run("call the echo tool", self.session, str(self.ws))
         approval_id = paused["approval"]["id"]
@@ -343,12 +376,15 @@ class AlwaysApprovalSubjectTests(ApprovalTestCase):
             argusd.approve(approval_id, True, str(self.ws), always=True)
 
         second = FakeProvider(
-            {"content": "", "tool_calls": [support.call("c2", "mcp__fake__echo", {"message": "again"})]},
+            {"content": "", "tool_calls": [support.call("c2", "mcp__fake__ech"
+                "o", {"message": "again"})]},
             {"content": "done"},
         )
         with mock.patch.object(argusd, "provider_call", second):
-            result = argusd.run("call the echo tool again", self.session + "-2", str(self.ws))
-        self.assertNotIn("approval", result, "the remembered rule should have auto-approved this call")
+            result = argusd.run("call the echo tool "
+                "again", self.session + "-2", str(self.ws))
+        self.assertNotIn("approval", result, "the remembered rule should have "
+            "auto-approved this call")
         self.assertTrue(result["ok"], result)
 
 

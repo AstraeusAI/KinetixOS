@@ -1,7 +1,6 @@
 """The MCP client, against a fake server that speaks real stdio framing —
 plus mcp.json config round-tripping and dynamic tool registration.
 """
-import json
 import sys
 import unittest
 from pathlib import Path
@@ -20,8 +19,9 @@ def serve(mode):
 
 class McpClientTests(unittest.TestCase):
     def setUp(self):
-        self._real_init_timeout, self._real_call_timeout = mcp.INIT_TIMEOUT, mcp.CALL_TIMEOUT
-        mcp.INIT_TIMEOUT = 3   # keep the suite fast; the budget is not what is under test
+        self._real_init_timeout = mcp.INIT_TIMEOUT
+        self._real_call_timeout = mcp.CALL_TIMEOUT
+        mcp.INIT_TIMEOUT = 3  # keep the suite fast; the budget is not under test
         mcp.CALL_TIMEOUT = 3
         self.addCleanup(lambda: setattr(mcp, "INIT_TIMEOUT", self._real_init_timeout))
         self.addCleanup(lambda: setattr(mcp, "CALL_TIMEOUT", self._real_call_timeout))
@@ -78,7 +78,8 @@ class McpClientTests(unittest.TestCase):
         self.assertFalse(result["ok"])
 
     def test_stop_all_terminates_every_client(self):
-        clients = {"a": self.start("ok"), "b": mcp.MCPClient(sys.executable, [FAKE, "ok"])}
+        clients = {"a": self.start("o"
+            "k"), "b": mcp.MCPClient(sys.executable, [FAKE, "ok"])}
         clients["b"].start()
         self.client = None  # ownership moves to stop_all/tearDown below
         mcp.stop_all(clients)
@@ -160,7 +161,10 @@ class RegisterMcpToolsTests(unittest.TestCase):
         mcp.save_config({"servers": {"fs": {
             "command": "npx", "args": [], "env": {}, "enabled": True,
             "tools": [{"name": "read_file", "description": "Read a file.",
-                      "inputSchema": {"type": "object", "properties": {"path": {"type": "string"}}},
+                      "inputSchema": {
+                          "type": "object",
+                          "properties": {"path": {"type": "string"}},
+                      },
                       "annotations": {"readOnlyHint": True}}]}}})
         tools._register_mcp_tools()
         spec = tools.REGISTRY["mcp__fs__read_file"]
@@ -192,7 +196,8 @@ class RegisterMcpToolsTests(unittest.TestCase):
 
 class ToolFullNameTests(unittest.TestCase):
     def test_names_are_slugged_and_namespaced(self):
-        self.assertEqual("mcp__my_server__echo", mcp.tool_full_name("my server", "echo"))
+        self.assertEqual("mcp__my_server__ech"
+            "o", mcp.tool_full_name("my server", "echo"))
 
     def test_unusual_characters_do_not_produce_an_empty_slug(self):
         self.assertEqual("mcp__tool__tool", mcp.tool_full_name("!!!", "???"))

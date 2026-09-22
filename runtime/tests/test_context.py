@@ -102,7 +102,8 @@ class CompactionTests(unittest.TestCase):
         self.assertGreater(report["archivedEvents"], 0)
         kept = self.db.execute("SELECT COUNT(*) FROM events WHERE session=?",
                                (self.session,)).fetchone()[0]
-        archived = self.db.execute("SELECT COUNT(*) FROM archived_events WHERE session=?",
+        archived = self.db.execute("SELECT COUNT(*) FROM archived_events WHERE "
+            "session=?",
                                    (self.session,)).fetchone()[0]
         self.assertEqual(report["archivedEvents"], archived)
         self.assertLessEqual(kept, argusd.KEEP_EVENTS)
@@ -112,7 +113,8 @@ class CompactionTests(unittest.TestCase):
         compaction the model could not tell a successful edit from a failed one."""
         self.seed(argusd.MAX_CONTEXT_EVENTS // 2 + 1, tool_ok=False)
         argusd.compact(self.db, self.session)
-        text = self.db.execute("SELECT text FROM summaries WHERE session=? ORDER BY id DESC LIMIT 1",
+        text = self.db.execute("SELECT text FROM summaries WHERE session=? ORDER BY id "
+            "DESC LIMIT 1",
                                (self.session,)).fetchone()[0]
         self.assertIn("edit_file FAILED", text)
         self.assertIn("syntax error", text)
@@ -121,7 +123,8 @@ class CompactionTests(unittest.TestCase):
         self.seed(120)
         for _ in range(3):
             argusd.compact(self.db, self.session)
-        for (text,) in self.db.execute("SELECT text FROM summaries WHERE session=?", (self.session,)):
+        for (text,) in self.db.execute("SELECT text FROM summaries WHERE "
+            "session=?", (self.session,)):
             self.assertLessEqual(len(text), argusd.SUMMARY_CHARS)
 
     def test_raw_chars_is_tracked_incrementally_not_refetched(self):
@@ -133,7 +136,8 @@ class CompactionTests(unittest.TestCase):
         length computed the old way (full fetch + join), not just happen to
         produce the same compact()/None outcome by coincidence."""
         self.seed(5)
-        rows = self.db.execute("SELECT kind,payload FROM events WHERE session=? ORDER BY id",
+        rows = self.db.execute("SELECT kind,payload FROM events WHERE session=? ORDER "
+            "BY id",
                                (self.session,)).fetchall()
         expected = sum(len(k) + 2 + len(p) for k, p in rows)
         tracked = int(argusd.get_state(self.db, self.session, "raw_chars") or 0)
@@ -142,9 +146,11 @@ class CompactionTests(unittest.TestCase):
     def test_raw_chars_resyncs_after_a_real_compaction(self):
         self.seed(50)
         argusd.compact(self.db, self.session)
-        rows = self.db.execute("SELECT kind,payload FROM events WHERE session=? ORDER BY id",
+        rows = self.db.execute("SELECT kind,payload FROM events WHERE session=? ORDER "
+            "BY id",
                                (self.session,)).fetchall()
-        expected = sum(len(k) + 2 + len(p) for k, p in rows)  # only the kept tail remains
+        # only the kept tail remains
+        expected = sum(len(k) + 2 + len(p) for k, p in rows)
         tracked = int(argusd.get_state(self.db, self.session, "raw_chars") or 0)
         self.assertEqual(expected, tracked)
 
@@ -156,11 +162,13 @@ class CompactionTests(unittest.TestCase):
         self.assertIsNone(argusd.compact(self.db, self.session),
                           "25 small events alone should not trigger compaction")
         oversized = "x" * (argusd.MAX_CONTEXT_CHARS + 1)
-        self.db.execute("INSERT INTO summaries(ts,session,until_id,text) VALUES(?,?,?,?)",
+        self.db.execute("INSERT INTO summaries(ts,session,until_id,text) "
+            "VALUES(?,?,?,?)",
                         (argusd.now(), self.session, 0, oversized))
         self.db.commit()
         self.assertIsNotNone(argusd.compact(self.db, self.session),
-                             "a summary larger than the whole budget must trigger compaction")
+                             "a summary larger than the whole budget must trigger "
+                                 "compaction")
 
     def test_compaction_never_orphans_a_tool_result_from_its_assistant_call(self):
         """The actual production incident this fixes: compact() archived an
@@ -181,7 +189,8 @@ class CompactionTests(unittest.TestCase):
             for i in range(3):
                 argusd.event(self.db, self.session, "user", {"text": f"filler {i}"})
                 argusd.event(self.db, self.session, "assistant", {"text": f"ok {i}"})
-            argusd.event(self.db, self.session, "assistant", {"text": "", "tool_calls": [
+            argusd.event(self.db, self.session, "assistant", {"text": "", "tool_call"
+                "s": [
                 {"id": "callA", "function": {"name": "read_file", "arguments": "{}"}},
                 {"id": "callB", "function": {"name": "read_file", "arguments": "{}"}}]})
             argusd.event(self.db, self.session, "tool",
@@ -206,7 +215,8 @@ class CompactionTests(unittest.TestCase):
                 elif kind == "tool":
                     answered_ids.add(p["id"])
             self.assertTrue(answered_ids <= declared_ids,
-                            f"tool result(s) {answered_ids - declared_ids} kept with no "
+                            f"tool result(s) {answered_ids - declared_ids} kept with "
+                                f"no "
                             "matching tool_calls declaration in the kept events")
             self.assertIn("callA", declared_ids,
                           "the two-call assistant message must not have been archived "
@@ -232,20 +242,24 @@ class ContextTests(unittest.TestCase):
                   for block in _blocks(message) if block.get("type") == "image"]
         self.assertEqual(argusd.MAX_IMAGES, len(images))
 
-    def test_observe_screen_images_are_dropped_once_the_model_is_known_to_lack_vision(self):
+    def test_observe_screen_images_are_dropped_once_the_model_is_known_to_lack_vision(
+        self,
+    ):
         """Companion to argusd's provider_call self-heal: once no_image_support is
         set, context() must stop attaching images (the thing that caused the
         original failure) rather than re-triggering it on every subsequent step."""
         p = support.TMP / "cap-no-vision.png"
         p.write_bytes(PNG_1PX)
         argusd.event(self.db, self.session, "tool",
-                     {"id": "s0", "name": "observe_screen", "result": {"ok": True, "path": str(p)}})
+                     {"id": "s0", "name": "observe_scree"
+                         "n", "result": {"ok": True, "path": str(p)}})
         argusd.set_state(self.db, self.session, "no_image_support", "1")
         messages = argusd.context(self.db, self.session)
         images = [block for message in messages
                   for block in _blocks(message) if block.get("type") == "image"]
         self.assertEqual(0, len(images))
-        joined = "\n".join(m["content"] for m in messages if isinstance(m.get("content"), str))
+        joined = "\n".join(m["conten"
+            "t"] for m in messages if isinstance(m.get("content"), str))
         self.assertIn("does not accept image input", joined)
 
     def test_pinned_task_and_plan_survive_outside_the_event_window(self):
@@ -253,7 +267,8 @@ class ContextTests(unittest.TestCase):
         argusd.set_state(self.db, self.session, "todos", json.dumps(
             [{"content": "step one", "status": "pending"}]))
         messages = argusd.context(self.db, self.session)
-        joined = "\n".join(m["content"] for m in messages if isinstance(m.get("content"), str))
+        joined = "\n".join(m["conten"
+            "t"] for m in messages if isinstance(m.get("content"), str))
         self.assertIn("ship the parser fix", joined)
         self.assertIn("step one", joined)
 
@@ -261,7 +276,8 @@ class ContextTests(unittest.TestCase):
         """The invariant both OpenAI and Anthropic enforce."""
         calls = [{"id": "c1", "type": "function",
                   "function": {"name": "read_file", "arguments": "{}"}}]
-        argusd.event(self.db, self.session, "assistant", {"text": "", "tool_calls": calls})
+        argusd.event(self.db, self.session, "assistant", {"text": "", "tool_call"
+            "s": calls})
         argusd.event(self.db, self.session, "tool", {"id": "c1", "name": "read_file",
                                                      "result": {"ok": True}})
         messages = argusd.context(self.db, self.session)
@@ -283,7 +299,8 @@ class ContextTests(unittest.TestCase):
             argusd.event(self.db, self.session, "assistant", {"text": "a0"})
             argusd.event(self.db, self.session, "user", {"text": "u1"})
             argusd.event(self.db, self.session, "assistant", {"text": "a1"})
-            argusd.event(self.db, self.session, "assistant", {"text": "", "tool_calls": [
+            argusd.event(self.db, self.session, "assistant", {"text": "", "tool_call"
+                "s": [
                 {"id": "callX", "function": {"name": "read_file", "arguments": "{}"}},
                 {"id": "callY", "function": {"name": "read_file", "arguments": "{}"}}]})
             argusd.event(self.db, self.session, "tool",
@@ -295,7 +312,8 @@ class ContextTests(unittest.TestCase):
             argusd.event(self.db, self.session, "user", {"text": "u3"})
 
             messages = argusd.context(self.db, self.session)
-        declared = {c["id"] for message in messages for c in (message.get("tool_calls") or [])}
+        declared = {c["id"] for message in messages for c in (message.get("tool_call"
+            "s") or [])}
         answered = {message["tool_call_id"] for message in messages
                     if message.get("role") == "tool"}
         self.assertTrue(answered <= declared,
@@ -313,7 +331,8 @@ class ContextTests(unittest.TestCase):
         argusd.event(self.db, self.session, "user", {"text": "do the thing"})
         argusd.event(self.db, self.session, "assistant",
                      {"text": "⚠️ Provider request failed: HTTP 400 something broke"})
-        argusd.event(self.db, self.session, "user", {"text": "a brand new unrelated task"})
+        argusd.event(self.db, self.session, "user", {"text": "a brand new unrelated "
+            "task"})
         messages = argusd.context(self.db, self.session)
         for m in messages:
             content = m.get("content")
@@ -329,7 +348,8 @@ class ContextTests(unittest.TestCase):
         argusd.event(self.db, self.session, "assistant",
                      {"text": "Careful — ⚠️ this function has a race condition."})
         messages = argusd.context(self.db, self.session)
-        joined = "\n".join(m["content"] for m in messages if isinstance(m.get("content"), str))
+        joined = "\n".join(m["conten"
+            "t"] for m in messages if isinstance(m.get("content"), str))
         self.assertIn("race condition", joined)
 
 

@@ -22,6 +22,7 @@ What KWin does provide, and what this module uses:
 
 Everything here is capability-detected. Nothing pretends to work.
 """
+
 import csv
 import hashlib
 import json
@@ -48,10 +49,15 @@ TMP = Path("/tmp")
 
 # ── D-Bus plumbing ───────────────────────────────────────────────────────
 
+
 def _busctl(*args, timeout=15):
     try:
-        r = subprocess.run(["busctl", "--user", "--json=short", *args],
-                           capture_output=True, text=True, timeout=timeout)
+        r = subprocess.run(
+            ["busctl", "--user", "--json=short", *args],
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
     except Exception:
         return None
     if r.returncode != 0:
@@ -66,8 +72,9 @@ def _busctl_ok(*args, timeout=15):
     """True when the call succeeds. Needed for void methods (Ping, start, Run),
     where there is no JSON body to parse."""
     try:
-        r = subprocess.run(["busctl", "--user", *args],
-                           capture_output=True, text=True, timeout=timeout)
+        r = subprocess.run(
+            ["busctl", "--user", *args], capture_output=True, text=True, timeout=timeout
+        )
         return r.returncode == 0
     except Exception:
         return False
@@ -91,6 +98,7 @@ def available():
 
 # ── scripting channel ────────────────────────────────────────────────────
 
+
 def _journal_text(seconds=20, marker=None):
     """Recent KWin log lines. The unit name varies between setups, so try the
     common ones and finally the whole user journal.
@@ -106,9 +114,21 @@ def _journal_text(seconds=20, marker=None):
     first_nonempty = ""
     for unit in (["-u", "plasma-kwin_wayland"], ["-u", "kwin_wayland"], []):
         try:
-            r = subprocess.run(["journalctl", "--user", "--no-pager", "-o", "cat",
-                                "--since", f"{seconds} seconds ago", *unit],
-                               capture_output=True, text=True, timeout=15)
+            r = subprocess.run(
+                [
+                    "journalctl",
+                    "--user",
+                    "--no-pager",
+                    "-o",
+                    "cat",
+                    "--since",
+                    f"{seconds} seconds ago",
+                    *unit,
+                ],
+                capture_output=True,
+                text=True,
+                timeout=15,
+            )
         except Exception:
             continue
         if r.returncode == 0 and r.stdout.strip():
@@ -137,7 +157,9 @@ def run_script(js, marker, timeout=8):
     path = TMP / f"argus-kwin-{nonce}.js"
     path.write_text(js.replace("__MARKER__", unique))
     try:
-        loaded = _busctl("call", BUS, SCRIPTING_PATH, SCRIPTING_IFACE, "loadScript", "s", str(path))
+        loaded = _busctl(
+            "call", BUS, SCRIPTING_PATH, SCRIPTING_IFACE, "loadScript", "s", str(path)
+        )
         if loaded is None:
             return None
         _busctl("call", BUS, SCRIPTING_PATH, SCRIPTING_IFACE, "start")
@@ -150,7 +172,15 @@ def run_script(js, marker, timeout=8):
         return None
     finally:
         try:
-            _busctl("call", BUS, SCRIPTING_PATH, SCRIPTING_IFACE, "unloadScript", "s", str(path))
+            _busctl(
+                "call",
+                BUS,
+                SCRIPTING_PATH,
+                SCRIPTING_IFACE,
+                "unloadScript",
+                "s",
+                str(path),
+            )
         except Exception:
             pass
         try:
@@ -174,7 +204,7 @@ def run_script(js, marker, timeout=8):
 # window geometry) does so in screenshot-pixel space and converts
 # internally, so a caller reasoning from a screenshot never has to know
 # the scale factor exists.
-_SCREEN_SCALE = {}
+_SCREEN_SCALE: dict[str, float] = {}
 
 
 def _screen_scale():
@@ -190,7 +220,9 @@ def _screen_scale():
         return _SCREEN_SCALE["v"]
     scale = 1.0
     try:
-        r = subprocess.run(["kscreen-doctor", "-j"], capture_output=True, text=True, timeout=5)
+        r = subprocess.run(
+            ["kscreen-doctor", "-j"], capture_output=True, text=True, timeout=5
+        )
         if r.returncode == 0:
             doc = json.loads(r.stdout)
             for o in doc.get("outputs", []):
@@ -258,8 +290,12 @@ def list_windows(limit=60):
     if raw:
         try:
             wins = [_win_to_screenshot_space(w) for w in json.loads(raw)]
-            return {"ok": True, "source": "scripting", "count": len(wins),
-                    "windows": wins[:limit]}
+            return {
+                "ok": True,
+                "source": "scripting",
+                "count": len(wins),
+                "windows": wins[:limit],
+            }
         except Exception:
             pass
     return _list_via_dbus(limit)
@@ -268,8 +304,11 @@ def list_windows(limit=60):
 def _list_via_dbus(limit=60):
     d = _busctl("call", BUS, RUNNER_PATH, RUNNER_IFACE, "Match", "s", "")
     if not d:
-        return {"ok": False, "error": "KWin window inventory unavailable "
-                                      "(scripting and KRunner both failed)"}
+        return {
+            "ok": False,
+            "error": "KWin window inventory unavailable "
+            "(scripting and KRunner both failed)",
+        }
     rows = d.get("data", [[]])[0]
     out = []
     for row in rows[:limit]:
@@ -280,16 +319,24 @@ def _list_via_dbus(limit=60):
         if info:
             for k, v in (info.get("data", [{}])[0] or {}).items():
                 fields[k] = _unbox(v)
-        out.append(_win_to_screenshot_space({
-            "uuid": uuid, "caption": text,
-            "cls": fields.get("resourceClass", ""),
-            "pid": fields.get("pid", 0),
-            "x": int(fields.get("x", 0)), "y": int(fields.get("y", 0)),
-            "w": int(fields.get("width", 0)), "h": int(fields.get("height", 0)),
-            "active": False, "minimized": bool(fields.get("minimized", False)),
-            "fullscreen": bool(fields.get("fullscreen", False)),
-            "desktop": 0,
-        }))
+        out.append(
+            _win_to_screenshot_space(
+                {
+                    "uuid": uuid,
+                    "caption": text,
+                    "cls": fields.get("resourceClass", ""),
+                    "pid": fields.get("pid", 0),
+                    "x": int(fields.get("x", 0)),
+                    "y": int(fields.get("y", 0)),
+                    "w": int(fields.get("width", 0)),
+                    "h": int(fields.get("height", 0)),
+                    "active": False,
+                    "minimized": bool(fields.get("minimized", False)),
+                    "fullscreen": bool(fields.get("fullscreen", False)),
+                    "desktop": 0,
+                }
+            )
+        )
     return {"ok": True, "source": "dbus", "count": len(out), "windows": out}
 
 
@@ -360,41 +407,57 @@ def activate_window(uuid):
     previously focused window, which is exactly what the focus guard in
     lib/tools.py exists to prevent.
     """
-    r = _window_action(uuid, """
+    r = _window_action(
+        uuid,
+        """
     if (target.minimized) { target.minimized = false; }
     if (target.activate) { target.activate(); }
     else { workspace.activeWindow = target; }
     console.info("__MARKER__activated");
-""")
+""",
+    )
     if r.get("ok") and _wait_until_active(uuid):
         return r
     # fallback: KRunner windows runner (void method — check status, not JSON)
     if _busctl_ok("call", BUS, RUNNER_PATH, RUNNER_IFACE, "Run", "ss", "0_" + uuid, ""):
         if _wait_until_active(uuid):
             return {"ok": True, "result": "activated via KRunner"}
-        return {"ok": False, "error": f"activation requested, but {uuid} is still not the "
-                                      f"focused window (focus: {_active_uuid() or 'none'})"}
+        return {
+            "ok": False,
+            "error": f"activation requested, but {uuid} is still not the "
+            f"focused window (focus: {_active_uuid() or 'none'})",
+        }
     if r.get("ok"):
-        return {"ok": False, "error": f"activate did not take effect — focus is on "
-                                      f"{_active_uuid() or 'no window'}"}
+        return {
+            "ok": False,
+            "error": f"activate did not take effect — focus is on "
+            f"{_active_uuid() or 'no window'}",
+        }
     return r
 
 
 def focus_or_launch(app_name, timeout=6.0, command=None):
-    """Focus an existing window matching app_name, or launch the app and wait for its window to gain focus."""
+    (
+        """Focus an existing window matching app_name, or launch the app and wait """
+        """for """
+        """its window to gain focus."""
+    )
     cand = str(app_name).strip().lower()
 
     # 1. Check existing windows
     wins = list_windows(limit=100)
     if wins.get("ok"):
         for w in wins.get("windows", []):
-            if cand in (w.get("cls") or "").lower() or cand in (w.get("caption") or "").lower():
+            if (
+                cand in (w.get("cls") or "").lower()
+                or cand in (w.get("caption") or "").lower()
+            ):
                 act = activate_window(w["uuid"])
                 return {
                     "ok": bool(act.get("ok")),
                     "action": "focused_existing",
                     "window": w,
-                    **({} if act.get("ok") else {"error": act.get("error")})
+                    **({} if act.get("ok") else {"error": act.get("error")}),
                 }
 
     # 2. Not running: launch
@@ -407,15 +470,25 @@ def focus_or_launch(app_name, timeout=6.0, command=None):
         exe = shutil.which(app_name)
         if not exe:
             if shutil.which("gtk-launch"):
-                desk_name = app_name if not app_name.endswith(".desktop") else app_name[:-8]
+                desk_name = (
+                    app_name if not app_name.endswith(".desktop") else app_name[:-8]
+                )
                 launch_cmd = ["gtk-launch", desk_name]
             else:
-                return {"ok": False, "error": f"executable not found for app: {app_name!r}"}
+                return {
+                    "ok": False,
+                    "error": f"executable not found for app: {app_name!r}",
+                }
         else:
             launch_cmd = [exe]
 
     try:
-        subprocess.Popen(launch_cmd, start_new_session=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.Popen(
+            launch_cmd,
+            start_new_session=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
     except Exception as e:
         return {"ok": False, "error": f"failed to launch {app_name!r}: {e}"}
 
@@ -426,23 +499,33 @@ def focus_or_launch(app_name, timeout=6.0, command=None):
         wins = list_windows(limit=100)
         if wins.get("ok"):
             for w in wins.get("windows", []):
-                if cand in (w.get("cls") or "").lower() or cand in (w.get("caption") or "").lower():
+                if (
+                    cand in (w.get("cls") or "").lower()
+                    or cand in (w.get("caption") or "").lower()
+                ):
                     act = activate_window(w["uuid"])
                     return {
                         "ok": bool(act.get("ok")),
                         "action": "launched_and_focused",
                         "window": w,
-                        **({} if act.get("ok") else {"error": act.get("error")})
+                        **({} if act.get("ok") else {"error": act.get("error")}),
                     }
 
-    return {"ok": False, "error": f"launched {app_name!r} but no matching window appeared within {timeout}s"}
+    return {
+        "ok": False,
+        "error": f"launched {app_name!r} but no matching window appeared within "
+        f"{timeout}s",
+    }
 
 
 def close_window(uuid):
-    return _window_action(uuid, """
+    return _window_action(
+        uuid,
+        """
     target.closeWindow();
     console.info("__MARKER__closed");
-""")
+""",
+    )
 
 
 def move_window(uuid, x, y, w=None, h=None):
@@ -453,9 +536,11 @@ def move_window(uuid, x, y, w=None, h=None):
     lw = round(int(w) / scale) if w else None
     lh = round(int(h) / scale) if h else None
     body = "target.frameGeometry = { x: %d, y: %d, width: %s, height: %s };\n" % (
-        lx, ly,
+        lx,
+        ly,
         lw if lw else "target.frameGeometry.width",
-        lh if lh else "target.frameGeometry.height")
+        lh if lh else "target.frameGeometry.height",
+    )
     body += 'console.info("__MARKER__moved");'
     return _window_action(uuid, body)
 
@@ -512,15 +597,20 @@ def resolve_window(win_identifier):
         if w.get("uuid") == str(win_identifier):
             return w
     for w in wins.get("windows", []):
-        if cand in (w.get("caption") or "").lower() or cand in (w.get("cls") or "").lower():
+        if (
+            cand in (w.get("caption") or "").lower()
+            or cand in (w.get("cls") or "").lower()
+        ):
             return w
     return None
 
 
 def window_to_screen_px(win_identifier, rx, ry):
-    """Translate window-relative coordinates (rx, ry) to absolute screenshot-pixel coordinates.
+    """Translate window-relative coordinates (rx, ry) to absolute
+    screenshot-pixel coordinates.
     `win_identifier`: 'active', window UUID, or substring of window caption/class.
-    If rx/ry are floats between 0.0 and 1.0, they are treated as fractional proportions of the window width/height.
+    If rx/ry are floats between 0.0 and 1.0, they are treated as fractional
+    proportions of the window width/height.
     If integers or >= 1.0, they are treated as pixel offsets from the window's top-left.
     """
     target = resolve_window(win_identifier)
@@ -547,14 +637,22 @@ def window_to_screen_px(win_identifier, rx, ry):
         "ok": True,
         "x": abs_x,
         "y": abs_y,
-        "window": {"uuid": target.get("uuid"), "caption": target.get("caption"), "cls": target.get("cls")}
+        "window": {
+            "uuid": target.get("uuid"),
+            "caption": target.get("caption"),
+            "cls": target.get("cls"),
+        },
     }
 
 
 # ── screenshots ──────────────────────────────────────────────────────────
 
+
 def _read_image_dimensions(path):
-    """Read width/height directly from image header without loading full image pixels."""
+    (
+        """Read width/height directly from image header without loading full image """
+        """pixels."""
+    )
     try:
         p = Path(path)
         if not p.exists():
@@ -566,8 +664,12 @@ def _read_image_dimensions(path):
                 return int(w), int(h)
         conv = shutil.which("identify")
         if conv:
-            r = subprocess.run([conv, "-format", "%w %h", str(p)],
-                               capture_output=True, text=True, timeout=5)
+            r = subprocess.run(
+                [conv, "-format", "%w %h", str(p)],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
             if r.returncode == 0 and r.stdout.strip():
                 parts = r.stdout.strip().split()
                 if len(parts) >= 2:
@@ -577,14 +679,24 @@ def _read_image_dimensions(path):
     return None, None
 
 
-def screenshot(path, mode="fullscreen", region=None, include_pointer=False, stamp_cursor=False,
-               grid=False, grid_step=100, annotate=False, annotate_max=50):
+def screenshot(
+    path,
+    mode="fullscreen",
+    region=None,
+    include_pointer=False,
+    stamp_cursor=False,
+    grid=False,
+    grid_step=100,
+    annotate=False,
+    annotate_max=50,
+):
     """Capture via spectacle. `mode`: fullscreen | monitor | active | cursor.
     `region` = (x, y, w, h) crops a fullscreen capture (spectacle's --region is
     interactive only). If `stamp_cursor` is True, draws a high-visibility cursor
     targeting indicator at the measured pointer position.
     If `grid` is True, draws an overlay coordinate grid with numerical pixel markers.
-    If `annotate` is True, detects UI text/buttons and draws numbered Set-of-Marks badges.
+    If `annotate` is True, detects UI text/buttons and draws numbered
+    Set-of-Marks badges.
 
     `cursor` (spectacle -u, window-under-cursor) is measurably less reliable
     in background mode than the other three: verified live on this host with
@@ -599,22 +711,33 @@ def screenshot(path, mode="fullscreen", region=None, include_pointer=False, stam
         return {"ok": False, "error": "spectacle not installed"}
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    flag = {"fullscreen": "-f", "monitor": "-m", "active": "-a", "cursor": "-u"}.get(mode, "-f")
+    flag = {"fullscreen": "-f", "monitor": "-m", "active": "-a", "cursor": "-u"}.get(
+        mode, "-f"
+    )
     cmd = ["spectacle", "-b", "-n", flag, "-o", str(path)]
     if include_pointer:
         cmd.append("-p")
     try:
         r = subprocess.run(cmd, capture_output=True, text=True, timeout=12)
     except subprocess.TimeoutExpired:
-        return {"ok": False, "error": f"spectacle timed out (mode={mode})"
-                + (" — cursor mode is known to hang here; try mode=active instead"
-                   if mode == "cursor" else "")}
+        return {
+            "ok": False,
+            "error": f"spectacle timed out (mode={mode})"
+            + (
+                " — cursor mode is known to hang here; try mode=active instead"
+                if mode == "cursor"
+                else ""
+            ),
+        }
     if not path.exists():
         detail = (r.stderr or r.stdout or "").strip()[:300]
         if not detail:
             detail = f"spectacle exited {r.returncode} with no diagnostic output"
             if mode == "cursor":
-                detail += " (cursor mode is known to be unreliable in background mode — try mode=active)"
+                detail += (
+                    " (cursor mode is known to be unreliable in background mode "
+                    "— try mode=active)"
+                )
         return {"ok": False, "error": "capture failed: " + detail}
     region_applied = None
     if region:
@@ -624,8 +747,19 @@ def screenshot(path, mode="fullscreen", region=None, include_pointer=False, stam
             region_applied = False
         else:
             try:
-                cr = subprocess.run([conv, str(path), "-crop", f"{w}x{h}+{x}+{y}", "+repage", str(path)],
-                                    capture_output=True, text=True, timeout=25)
+                cr = subprocess.run(
+                    [
+                        conv,
+                        str(path),
+                        "-crop",
+                        f"{w}x{h}+{x}+{y}",
+                        "+repage",
+                        str(path),
+                    ],
+                    capture_output=True,
+                    text=True,
+                    timeout=25,
+                )
                 region_applied = cr.returncode == 0
             except Exception:
                 region_applied = False
@@ -640,11 +774,16 @@ def screenshot(path, mode="fullscreen", region=None, include_pointer=False, stam
                 if ann.get("ok"):
                     elements = ann.get("elements", [])
             w, h = _read_image_dimensions(path)
-            res = {"ok": True, "path": str(path), "mode": mode,
-                   "bytes": path.stat().st_size, "region_applied": False,
-                   "scale": _screen_scale(),
-                   "note": "region crop requested but not applied (need ImageMagick's "
-                           "magick/convert) — this is the full, uncropped capture"}
+            res = {
+                "ok": True,
+                "path": str(path),
+                "mode": mode,
+                "bytes": path.stat().st_size,
+                "region_applied": False,
+                "scale": _screen_scale(),
+                "note": "region crop requested but not applied (need ImageMagick's "
+                "magick/convert) — this is the full, uncropped capture",
+            }
             if grid:
                 res["grid"] = True
                 res["grid_step"] = grid_step
@@ -665,9 +804,14 @@ def screenshot(path, mode="fullscreen", region=None, include_pointer=False, stam
         if ann.get("ok"):
             elements = ann.get("elements", [])
     w, h = _read_image_dimensions(path)
-    res = {"ok": True, "path": str(path), "mode": mode,
-           "bytes": path.stat().st_size, "scale": _screen_scale(),
-           **({"region_applied": True} if region else {})}
+    res = {
+        "ok": True,
+        "path": str(path),
+        "mode": mode,
+        "bytes": path.stat().st_size,
+        "scale": _screen_scale(),
+        **({"region_applied": True} if region else {}),
+    }
     if grid:
         res["grid"] = True
         res["grid_step"] = grid_step
@@ -680,10 +824,10 @@ def screenshot(path, mode="fullscreen", region=None, include_pointer=False, stam
     return res
 
 
-
 def stamp_cursor_marker(image_path, x=None, y=None, output_path=None, show_label=True):
     """Draw a high-contrast visual cursor target (ring + crosshair) onto an image.
-    If x/y are None, queries the current cursor position and converts to screenshot pixels.
+    If x/y are None, queries the current cursor position and converts to
+    screenshot pixels.
     If show_label is True, draws a readable numerical (x,y) label next to the marker."""
     if x is None or y is None:
         cur = cursor_position()
@@ -698,20 +842,45 @@ def stamp_cursor_marker(image_path, x=None, y=None, output_path=None, show_label
     r = 10
     cx, cy = int(round(x)), int(round(y))
     cmd = [
-        conv, str(image_path),
-        "-stroke", "#FF2222", "-strokewidth", "2", "-fill", "rgba(255,50,50,0.3)",
-        "-draw", f"circle {cx},{cy} {cx + r},{cy}",
-        "-stroke", "#FFFF00", "-strokewidth", "1",
-        "-draw", f"line {cx - 14},{cy} {cx + 14},{cy}",
-        "-draw", f"line {cx},{cy - 14} {cx},{cy + 14}",
+        conv,
+        str(image_path),
+        "-stroke",
+        "#FF2222",
+        "-strokewidth",
+        "2",
+        "-fill",
+        "rgba(255,50,50,0.3)",
+        "-draw",
+        f"circle {cx},{cy} {cx + r},{cy}",
+        "-stroke",
+        "#FFFF00",
+        "-strokewidth",
+        "1",
+        "-draw",
+        f"line {cx - 14},{cy} {cx + 14},{cy}",
+        "-draw",
+        f"line {cx},{cy - 14} {cx},{cy + 14}",
     ]
     if show_label:
         cmd += [
-            "-font", "DejaVu-Sans", "-pointsize", "10",
-            "-stroke", "black", "-strokewidth", "2", "-fill", "white",
-            "-draw", f"text {cx + 14},{cy - 6} \"({cx},{cy})\"",
-            "-stroke", "none", "-fill", "#FFFF00",
-            "-draw", f"text {cx + 14},{cy - 6} \"({cx},{cy})\"",
+            "-font",
+            "DejaVu-Sans",
+            "-pointsize",
+            "10",
+            "-stroke",
+            "black",
+            "-strokewidth",
+            "2",
+            "-fill",
+            "white",
+            "-draw",
+            f'text {cx + 14},{cy - 6} "({cx},{cy})"',
+            "-stroke",
+            "none",
+            "-fill",
+            "#FFFF00",
+            "-draw",
+            f'text {cx + 14},{cy - 6} "({cx},{cy})"',
         ]
     cmd.append(dst)
     try:
@@ -722,7 +891,8 @@ def stamp_cursor_marker(image_path, x=None, y=None, output_path=None, show_label
 
 
 def draw_coordinate_grid(image_path, step=100, output_path=None):
-    """Draw a subtle, high-legibility coordinate reference grid with pixel labels onto an image.
+    """Draw a subtle, high-legibility coordinate reference grid with pixel
+    labels onto an image.
     `step` is the pixel interval (e.g. 100 or 200)."""
     conv = shutil.which("magick") or shutil.which("convert")
     if not conv:
@@ -736,13 +906,22 @@ def draw_coordinate_grid(image_path, step=100, output_path=None):
     # Vertical grid lines and top coordinate labels
     for x in range(step, w, step):
         draws.append(f"stroke rgba(0,255,255,0.22) stroke-width 1 line {x},0 {x},{h}")
-        draws.append(f"stroke none fill rgba(0,255,255,0.85) text {x+3},12 \"{x}\"")
+        draws.append(f'stroke none fill rgba(0,255,255,0.85) text {x + 3},12 "{x}"')
     # Horizontal grid lines and left coordinate labels
     for y in range(step, h, step):
         draws.append(f"stroke rgba(0,255,255,0.22) stroke-width 1 line 0,{y} {w},{y}")
-        draws.append(f"stroke none fill rgba(0,255,255,0.85) text 3,{y+12} \"{y}\"")
-    cmd = [conv, str(image_path), "-font", "DejaVu-Sans", "-pointsize", "10",
-           "-draw", " ".join(draws), dst]
+        draws.append(f'stroke none fill rgba(0,255,255,0.85) text 3,{y + 12} "{y}"')
+    cmd = [
+        conv,
+        str(image_path),
+        "-font",
+        "DejaVu-Sans",
+        "-pointsize",
+        "10",
+        "-draw",
+        " ".join(draws),
+        dst,
+    ]
     try:
         res = subprocess.run(cmd, capture_output=True, timeout=15)
         return res.returncode == 0
@@ -759,13 +938,24 @@ def zoom(path, region, out_path=None):
         shot = screenshot(src, mode="fullscreen")
         if not shot.get("ok"):
             return shot
-    dst = Path(out_path) if out_path else src.with_name(f"{src.stem}-zoom-{rx}_{ry}_{rw}_{rh}{src.suffix}")
+    dst = (
+        Path(out_path)
+        if out_path
+        else src.with_name(f"{src.stem}-zoom-{rx}_{ry}_{rw}_{rh}{src.suffix}")
+    )
     conv = shutil.which("magick") or shutil.which("convert")
     if not conv:
-        return {"ok": False, "error": "ImageMagick (magick/convert) required for zoom crop"}
+        return {
+            "ok": False,
+            "error": "ImageMagick (magick/convert) required for zoom crop",
+        }
     try:
-        r = subprocess.run([conv, str(src), "-crop", f"{rw}x{rh}+{rx}+{ry}", "+repage", str(dst)],
-                           capture_output=True, text=True, timeout=20)
+        r = subprocess.run(
+            [conv, str(src), "-crop", f"{rw}x{rh}+{rx}+{ry}", "+repage", str(dst)],
+            capture_output=True,
+            text=True,
+            timeout=20,
+        )
         if r.returncode != 0:
             return {"ok": False, "error": f"zoom crop failed: {r.stderr[:200]}"}
     except Exception as e:
@@ -774,8 +964,10 @@ def zoom(path, region, out_path=None):
     return {
         "ok": True,
         "path": str(dst),
-        "x": rx, "y": ry,
-        "width": w or rw, "height": h or rh,
+        "x": rx,
+        "y": ry,
+        "width": w or rw,
+        "height": h or rh,
         "scale": _screen_scale(),
         "bytes": dst.stat().st_size,
     }
@@ -787,7 +979,7 @@ def wait_for_change(timeout=3.0, poll_interval=0.25, region=None):
     interval = max(0.1, min(float(poll_interval), 2.0))
     initial_win = _active_uuid()
     initial_p = TMP / f"argus-watch-base-{os.getpid()}.png"
-    base_shot = screenshot(initial_p, mode="fullscreen", region=region)
+    screenshot(initial_p, mode="fullscreen", region=region)
     base_bytes = initial_p.read_bytes() if initial_p.exists() else b""
     base_hash = hashlib.sha256(base_bytes).hexdigest() if base_bytes else None
     base_size = len(base_bytes) if base_bytes else None
@@ -798,8 +990,12 @@ def wait_for_change(timeout=3.0, poll_interval=0.25, region=None):
         cur_win = _active_uuid()
         if cur_win != initial_win:
             initial_p.unlink(missing_ok=True)
-            return {"ok": True, "changed": True, "reason": "active window changed",
-                    "elapsed": round(time.time() - start_t, 2)}
+            return {
+                "ok": True,
+                "changed": True,
+                "reason": "active window changed",
+                "elapsed": round(time.time() - start_t, 2),
+            }
         if base_hash is not None:
             chk_p = TMP / f"argus-watch-chk-{os.getpid()}.png"
             chk_shot = screenshot(chk_p, mode="fullscreen", region=region)
@@ -811,34 +1007,60 @@ def wait_for_change(timeout=3.0, poll_interval=0.25, region=None):
                 if cur_hash != base_hash:
                     chk_p.unlink(missing_ok=True)
                     initial_p.unlink(missing_ok=True)
-                    return {"ok": True, "changed": True, "reason": "screen pixels updated",
-                            "elapsed": round(time.time() - start_t, 2),
-                            "bytes_delta": diff}
+                    return {
+                        "ok": True,
+                        "changed": True,
+                        "reason": "screen pixels updated",
+                        "elapsed": round(time.time() - start_t, 2),
+                        "bytes_delta": diff,
+                    }
                 chk_p.unlink(missing_ok=True)
     initial_p.unlink(missing_ok=True)
-    return {"ok": True, "changed": False, "reason": "timeout expired without visual change",
-            "elapsed": round(time.time() - start_t, 2)}
+    return {
+        "ok": True,
+        "changed": False,
+        "reason": "timeout expired without visual change",
+        "elapsed": round(time.time() - start_t, 2),
+    }
 
 
 def display_info():
-    """Retrieve attached display outputs, resolutions, logical scales, and virtual desktop geometry."""
+    (
+        """Retrieve attached display outputs, resolutions, logical scales, and """
+        """virtual """
+        """desktop geometry."""
+    )
     scale = _screen_scale()
     if not shutil.which("kscreen-doctor"):
-        default_out = [{
-            "name": "default", "primary": True, "enabled": True,
-            "x": 0, "y": 0, "scale": scale
-        }]
+        default_out = [
+            {
+                "name": "default",
+                "primary": True,
+                "enabled": True,
+                "x": 0,
+                "y": 0,
+                "scale": scale,
+            }
+        ]
         return {
             "ok": True,
             "count": 1,
             "displays": default_out,
             "outputs": default_out,
-            "screen_scale": scale
+            "screen_scale": scale,
         }
     try:
-        r = subprocess.run(["kscreen-doctor", "-j"], capture_output=True, text=True, timeout=10)
+        r = subprocess.run(
+            ["kscreen-doctor", "-j"], capture_output=True, text=True, timeout=10
+        )
         if r.returncode != 0 or not r.stdout.strip():
-            return {"ok": True, "count": 0, "displays": [], "outputs": [], "screen_scale": scale}
+            return {
+                "ok": True,
+                "count": 0,
+                "displays": [],
+                "outputs": [],
+                "screen_scale": scale,
+            }
         data = json.loads(r.stdout)
         outputs = []
         for out in data.get("outputs", []):
@@ -851,18 +1073,20 @@ def display_info():
             rr = mode.get("refreshRate", 60.0) if isinstance(mode, dict) else 60.0
             if rr > 1000:
                 rr = round(rr / 1000.0, 1)
-            outputs.append({
-                "id": out.get("id"),
-                "name": out.get("name"),
-                "primary": bool(out.get("primary", False)),
-                "x": pos.get("x", 0),
-                "y": pos.get("y", 0),
-                "width": size.get("width", 0),
-                "height": size.get("height", 0),
-                "scale": float(out.get("scale", 1.0)),
-                "rotation": out.get("rotation", 1),
-                "refresh_rate": rr,
-            })
+            outputs.append(
+                {
+                    "id": out.get("id"),
+                    "name": out.get("name"),
+                    "primary": bool(out.get("primary", False)),
+                    "x": pos.get("x", 0),
+                    "y": pos.get("y", 0),
+                    "width": size.get("width", 0),
+                    "height": size.get("height", 0),
+                    "scale": float(out.get("scale", 1.0)),
+                    "rotation": out.get("rotation", 1),
+                    "refresh_rate": rr,
+                }
+            )
         scr = data.get("screen", {}).get("currentSize") or data.get("currentSize", {})
         vw = scr.get("width")
         vh = scr.get("height")
@@ -875,7 +1099,7 @@ def display_info():
             "current_size": cur_sz,
             "virtual_width": vw,
             "virtual_height": vh,
-            "screen_scale": scale
+            "screen_scale": scale,
         }
     except Exception as e:
         return {"ok": False, "error": f"failed to query displays: {e}"}
@@ -890,7 +1114,7 @@ def ocr_screen(image_path=None, region=None, min_confidence=30):
     tmp_shot = None
     crop_path = None
     if not image_path or not Path(image_path).exists():
-        tmp_shot = TMP / f"argus-ocr-base-{os.getpid()}-{int(time.time()*1000)}.png"
+        tmp_shot = TMP / f"argus-ocr-base-{os.getpid()}-{int(time.time() * 1000)}.png"
         shot = screenshot(tmp_shot, mode="fullscreen", region=region)
         if not shot.get("ok"):
             return shot
@@ -916,11 +1140,23 @@ def ocr_screen(image_path=None, region=None, min_confidence=30):
         target_path = Path(image_path)
         if region:
             rx, ry, rw, rh = (int(v) for v in region)
-            crop_path = TMP / f"argus-ocr-crop-{os.getpid()}-{int(time.time()*1000)}.png"
+            crop_path = (
+                TMP / f"argus-ocr-crop-{os.getpid()}-{int(time.time() * 1000)}.png"
+            )
             conv = shutil.which("magick") or shutil.which("convert")
             if conv:
-                subprocess.run([conv, str(target_path), "-crop", f"{rw}x{rh}+{rx}+{ry}", "+repage", str(crop_path)],
-                               capture_output=True, timeout=10)
+                subprocess.run(
+                    [
+                        conv,
+                        str(target_path),
+                        "-crop",
+                        f"{rw}x{rh}+{rx}+{ry}",
+                        "+repage",
+                        str(crop_path),
+                    ],
+                    capture_output=True,
+                    timeout=10,
+                )
                 if crop_path.exists():
                     target_path = crop_path
                     reg_offset_x = rx
@@ -939,8 +1175,12 @@ def ocr_screen(image_path=None, region=None, min_confidence=30):
         cmd = ["tesseract", str(target_path), "stdout", "tsv", "--dpi", "96"]
         r = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
         if r.returncode != 0 and "--dpi" in (r.stderr or ""):
-            r = subprocess.run(["tesseract", str(target_path), "stdout", "tsv"],
-                               capture_output=True, text=True, timeout=15)
+            r = subprocess.run(
+                ["tesseract", str(target_path), "stdout", "tsv"],
+                capture_output=True,
+                text=True,
+                timeout=15,
+            )
         if r.returncode != 0:
             return {"ok": False, "error": f"tesseract failed: {r.stderr[:200]}"}
 
@@ -962,10 +1202,14 @@ def ocr_screen(image_path=None, region=None, min_confidence=30):
                     cy = y + h // 2
                     w_item = {
                         "text": txt,
-                        "left": x, "top": y, "width": w, "height": h,
-                        "center_x": cx, "center_y": cy,
+                        "left": x,
+                        "top": y,
+                        "width": w,
+                        "height": h,
+                        "center_x": cx,
+                        "center_y": cy,
                         "confidence": conf,
-                        "box": [x, y, w, h]
+                        "box": [x, y, w, h],
                     }
                     words.append(w_item)
                     key = (row[2], row[3], row[4])
@@ -981,21 +1225,26 @@ def ocr_screen(image_path=None, region=None, min_confidence=30):
             w = max_x - min_x
             h = max_y - min_y
             avg_conf = sum(w["confidence"] for w in line_words) / len(line_words)
-            lines.append({
-                "text": full_text,
-                "left": min_x, "top": min_y, "width": w, "height": h,
-                "center_x": (min_x + max_x) // 2,
-                "center_y": (min_y + max_y) // 2,
-                "confidence": round(avg_conf, 1),
-                "box": [min_x, min_y, w, h]
-            })
+            lines.append(
+                {
+                    "text": full_text,
+                    "left": min_x,
+                    "top": min_y,
+                    "width": w,
+                    "height": h,
+                    "center_x": (min_x + max_x) // 2,
+                    "center_y": (min_y + max_y) // 2,
+                    "confidence": round(avg_conf, 1),
+                    "box": [min_x, min_y, w, h],
+                }
+            )
 
         return {
             "ok": True,
             "word_count": len(words),
             "line_count": len(lines),
             "words": words,
-            "lines": lines
+            "lines": lines,
         }
     finally:
         if tmp_shot:
@@ -1005,8 +1254,14 @@ def ocr_screen(image_path=None, region=None, min_confidence=30):
 
 
 def find_text(query, image_path=None, region=None, exact=False, min_confidence=30):
-    """Search for text on screen using OCR. Returns list of matches with clickable centers (x, y)."""
-    ocr_res = ocr_screen(image_path=image_path, region=region, min_confidence=min_confidence)
+    (
+        """Search for text on screen using OCR. Returns list of matches with """
+        """clickable """
+        """centers (x, y)."""
+    )
+    ocr_res = ocr_screen(
+        image_path=image_path, region=region, min_confidence=min_confidence
+    )
     if not ocr_res.get("ok"):
         return ocr_res
 
@@ -1017,41 +1272,52 @@ def find_text(query, image_path=None, region=None, exact=False, min_confidence=3
         w_text = w["text"].lower()
         is_match = (w_text == q) if exact else (q in w_text)
         if is_match:
-            matches.append({
-                "text": w["text"],
-                "x": w["center_x"],
-                "y": w["center_y"],
-                "box": w["box"],
-                "confidence": round(w["confidence"], 1),
-                "exact": w_text == q,
-                "type": "word"
-            })
+            matches.append(
+                {
+                    "text": w["text"],
+                    "x": w["center_x"],
+                    "y": w["center_y"],
+                    "box": w["box"],
+                    "confidence": round(w["confidence"], 1),
+                    "exact": w_text == q,
+                    "type": "word",
+                }
+            )
 
-    for l in ocr_res.get("lines", []):
-        l_text = l["text"].lower()
+    for line in ocr_res.get("lines", []):
+        l_text = line["text"].lower()
         is_match = (l_text == q) if exact else (q in l_text)
         if is_match and (" " in q or not matches):
-            matches.append({
-                "text": l["text"],
-                "x": l["center_x"],
-                "y": l["center_y"],
-                "box": l["box"],
-                "confidence": round(l["confidence"], 1),
-                "exact": l_text == q,
-                "type": "line"
-            })
+            matches.append(
+                {
+                    "text": line["text"],
+                    "x": line["center_x"],
+                    "y": line["center_y"],
+                    "box": line["box"],
+                    "confidence": round(line["confidence"], 1),
+                    "exact": l_text == q,
+                    "type": "line",
+                }
+            )
 
     matches.sort(key=lambda m: (m["exact"], m["confidence"]), reverse=True)
-    return {
-        "ok": True,
-        "query": query,
-        "count": len(matches),
-        "matches": matches
-    }
+    return {"ok": True, "query": query, "count": len(matches), "matches": matches}
 
 
-def click_text(query, button="left", clicks=1, modifiers=None, region=None, exact=False, min_confidence=40.0, index=0):
-    """Find text on screen using OCR and click its center point. Placement is verified closed-loop."""
+def click_text(
+    query,
+    button="left",
+    clicks=1,
+    modifiers=None,
+    region=None,
+    exact=False,
+    min_confidence=40.0,
+    index=0,
+):
+    (
+        """Find text on screen using OCR and click its center point. Placement is """
+        """verified closed-loop."""
+    )
     found = find_text(query, region=region, exact=exact, min_confidence=min_confidence)
     if not found.get("ok"):
         return found
@@ -1062,10 +1328,13 @@ def click_text(query, button="left", clicks=1, modifiers=None, region=None, exac
     if idx < 0 or idx >= len(matches):
         return {
             "ok": False,
-            "error": f"requested match index {index} out of range ({len(matches)} match(es) found for {query!r})"
+            "error": f"requested match index {index} out of range ({len(matches)} "
+            f"match(es) found for {query!r})",
         }
     target = matches[idx]
-    c_res = click(target["x"], target["y"], button=button, clicks=clicks, modifiers=modifiers)
+    c_res = click(
+        target["x"], target["y"], button=button, clicks=clicks, modifiers=modifiers
+    )
     return {
         "ok": bool(c_res.get("ok")),
         "query": query,
@@ -1074,15 +1343,19 @@ def click_text(query, button="left", clicks=1, modifiers=None, region=None, exac
         "index": idx,
         "matches_found": len(matches),
         "click": c_res,
-        **({} if c_res.get("ok") else {"error": c_res.get("error")})
+        **({} if c_res.get("ok") else {"error": c_res.get("error")}),
     }
 
 
-_LAST_ANNOTATED_ELEMENTS = {}
+_LAST_ANNOTATED_ELEMENTS: dict[str, dict] = {}
 
 
 def click_element(element_id, button="left", clicks=1, modifiers=None):
-    """Click a Set-of-Marks annotated UI element by its integer badge ID [1], [2], ..."""
+    (
+        """Click a Set-of-Marks annotated UI element by its integer badge ID [1], """
+        """[2], """
+        """..."""
+    )
     try:
         eid = int(element_id)
     except (TypeError, ValueError):
@@ -1090,9 +1363,17 @@ def click_element(element_id, button="left", clicks=1, modifiers=None):
     el = _LAST_ANNOTATED_ELEMENTS.get(eid)
     if not el:
         if not _LAST_ANNOTATED_ELEMENTS:
-            return {"ok": False, "error": f"no screen annotations available; call observe_screen(annotate=true) first"}
+            return {
+                "ok": False,
+                "error": "no screen annotations available; call "
+                "observe_screen(annotate=true) first",
+            }
         avail = sorted(_LAST_ANNOTATED_ELEMENTS.keys())[:20]
-        return {"ok": False, "error": f"element [{eid}] not found in last screen annotation (available IDs: {avail})"}
+        return {
+            "ok": False,
+            "error": f"element [{eid}] not found in last screen annotation (available "
+            f"IDs: {avail})",
+        }
     c_res = click(el["x"], el["y"], button=button, clicks=clicks, modifiers=modifiers)
     return {
         "ok": bool(c_res.get("ok")),
@@ -1103,16 +1384,26 @@ def click_element(element_id, button="left", clicks=1, modifiers=None):
         "box": el.get("box"),
         "element": el,
         "click": c_res,
-        **({} if c_res.get("ok") else {"error": c_res.get("error")})
+        **({} if c_res.get("ok") else {"error": c_res.get("error")}),
     }
 
 
-def annotate_screen(image_path, region=None, output_path=None, max_elements=50, mode="auto"):
-    """Annotate screenshot with Set-of-Marks (SoM) numbered badges over detected UI elements."""
+def annotate_screen(
+    image_path, region=None, output_path=None, max_elements=50, mode="auto"
+):
+    (
+        """Annotate screenshot with Set-of-Marks (SoM) numbered badges over detected """
+        """UI """
+        """elements."""
+    )
     global _LAST_ANNOTATED_ELEMENTS
     conv = shutil.which("magick") or shutil.which("convert")
     if not conv:
-        return {"ok": False, "error": "ImageMagick (magick/convert) required for visual element annotation"}
+        return {
+            "ok": False,
+            "error": "ImageMagick (magick/convert) required for visual element "
+            "annotation",
+        }
 
     ocr = ocr_screen(image_path=image_path, region=region, min_confidence=40)
     if not ocr.get("ok"):
@@ -1122,28 +1413,41 @@ def annotate_screen(image_path, region=None, output_path=None, max_elements=50, 
     words = ocr.get("words", [])
 
     if mode == "lines" and lines:
-        candidates = [l for l in lines if len(l.get("text", "").strip()) > 1]
+        candidates = [line for line in lines if len(line.get("text", "").strip()) > 1]
     elif mode == "words" or not lines:
         candidates = [w for w in words if len(w.get("text", "").strip()) > 1]
-    else:  # mode == "auto": use line blocks for short phrases/buttons, words for long blocks
+    else:  # mode=="auto": line blocks for short phrases/buttons, words for long blocks
         candidates = []
-        for l in lines:
-            t = l.get("text", "").strip()
+        for line in lines:
+            t = line.get("text", "").strip()
             if 1 < len(t) <= 50:
-                candidates.append(l)
+                candidates.append(line)
         cand_boxes = [c["box"] for c in candidates if "box" in c]
         for w in words:
             if len(w.get("text", "").strip()) <= 1:
                 continue
-            wx, wy, ww, wh = w.get("box", (w.get("left", 0), w.get("top", 0), w.get("width", 0), w.get("height", 0)))
+            wx, wy, ww, wh = w.get(
+                "box",
+                (
+                    w.get("left", 0),
+                    w.get("top", 0),
+                    w.get("width", 0),
+                    w.get("height", 0),
+                ),
+            )
             inside = any(
-                bx <= wx and by <= wy and (bx + bw) >= (wx + ww) and (by + bh) >= (wy + wh)
+                bx <= wx
+                and by <= wy
+                and (bx + bw) >= (wx + ww)
+                and (by + bh) >= (wy + wh)
                 for bx, by, bw, bh in cand_boxes
             )
             if not inside:
                 candidates.append(w)
 
-    candidates.sort(key=lambda e: (e.get("top", e.get("y", 0)), e.get("left", e.get("x", 0))))
+    candidates.sort(
+        key=lambda e: (e.get("top", e.get("y", 0)), e.get("left", e.get("x", 0)))
+    )
     chosen = candidates[:max_elements]
 
     dst = str(output_path or image_path)
@@ -1154,12 +1458,7 @@ def annotate_screen(image_path, region=None, output_path=None, max_elements=50, 
                 shutil.copyfile(str(image_path), str(output_path))
             except Exception:
                 pass
-        return {
-            "ok": True,
-            "path": dst,
-            "count": 0,
-            "elements": []
-        }
+        return {"ok": True, "path": dst, "count": 0, "elements": []}
 
     draws = []
     elements_out = []
@@ -1173,23 +1472,41 @@ def annotate_screen(image_path, region=None, output_path=None, max_elements=50, 
         cx = el.get("center_x", x1 + w // 2)
         cy = el.get("center_y", y1 + h // 2)
 
-        draws.append(f"stroke rgba(0,255,255,0.7) stroke-width 1 fill rgba(0,255,255,0.06) rectangle {x1},{y1} {x2},{y2}")
+        draws.append(
+            f"stroke rgba(0,255,255,0.7) stroke-width 1 fill rgba(0,255,255,0.06) "
+            f"rectangle {x1},{y1} {x2},{y2}"
+        )
         by = max(0, y1 - 13)
         bx = x1
         bw = len(str(idx)) * 8 + 6
-        draws.append(f"stroke rgba(0,255,255,0.85) stroke-width 1 fill rgba(0,0,0,0.85) roundrectangle {bx},{by} {bx+bw},{by+12} 2,2")
-        draws.append(f"stroke none fill yellow text {bx+3},{by+9} \"[{idx}]\"")
+        draws.append(
+            f"stroke rgba(0,255,255,0.85) stroke-width 1 fill rgba(0,0,0,0.85) "
+            f"roundrectangle {bx},{by} {bx + bw},{by + 12} 2,2"
+        )
+        draws.append(f'stroke none fill yellow text {bx + 3},{by + 9} "[{idx}]"')
 
-        elements_out.append({
-            "id": idx,
-            "text": el.get("text", ""),
-            "x": cx,
-            "y": cy,
-            "box": [x1, y1, w, h],
-            "confidence": round(el.get("confidence", 80.0), 1)
-        })
+        elements_out.append(
+            {
+                "id": idx,
+                "text": el.get("text", ""),
+                "x": cx,
+                "y": cy,
+                "box": [x1, y1, w, h],
+                "confidence": round(el.get("confidence", 80.0), 1),
+            }
+        )
 
-    cmd = [conv, str(image_path), "-font", "DejaVu-Sans", "-pointsize", "9", "-draw", " ".join(draws), dst]
+    cmd = [
+        conv,
+        str(image_path),
+        "-font",
+        "DejaVu-Sans",
+        "-pointsize",
+        "9",
+        "-draw",
+        " ".join(draws),
+        dst,
+    ]
     try:
         r = subprocess.run(cmd, capture_output=True, timeout=20)
         if r.returncode != 0:
@@ -1199,18 +1516,24 @@ def annotate_screen(image_path, region=None, output_path=None, max_elements=50, 
             "ok": True,
             "path": dst,
             "count": len(elements_out),
-            "elements": elements_out
+            "elements": elements_out,
         }
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
 
 def compare_regions(before_path, after_path=None, region=None, tolerance=0.01):
-    """Compare a screen region across two captures using perceptual pixel error (ImageMagick compare)."""
+    (
+        """Compare a screen region across two captures using perceptual pixel error """
+        """(ImageMagick compare)."""
+    )
     conv = shutil.which("magick") or shutil.which("convert")
     comp = shutil.which("compare")
     if not conv or not comp:
-        return {"ok": False, "error": "ImageMagick (compare/magick) required for region comparison"}
+        return {
+            "ok": False,
+            "error": "ImageMagick (compare/magick) required for region comparison",
+        }
 
     if isinstance(before_path, (list, tuple)) and region is None:
         region = before_path
@@ -1219,7 +1542,9 @@ def compare_regions(before_path, after_path=None, region=None, tolerance=0.01):
 
     tmp_after = None
     if not after_path or not Path(after_path).exists():
-        tmp_after = TMP / f"argus-comp-after-{os.getpid()}-{int(time.time()*1000)}.png"
+        tmp_after = (
+            TMP / f"argus-comp-after-{os.getpid()}-{int(time.time() * 1000)}.png"
+        )
         shot = screenshot(tmp_after, mode="fullscreen")
         if not shot.get("ok"):
             return shot
@@ -1228,7 +1553,8 @@ def compare_regions(before_path, after_path=None, region=None, tolerance=0.01):
         p_after = Path(after_path)
 
     if not before_path or not Path(before_path).exists():
-        if tmp_after: tmp_after.unlink(missing_ok=True)
+        if tmp_after:
+            tmp_after.unlink(missing_ok=True)
         return {"ok": False, "error": "before_path image required for comparison"}
 
     p_before = Path(before_path)
@@ -1240,24 +1566,48 @@ def compare_regions(before_path, after_path=None, region=None, tolerance=0.01):
         rx, ry, rw, rh = 0, 0, (bw or 1920), (bh or 1080)
 
     total_px = rw * rh
-    c_before = TMP / f"argus-crop-b4-{os.getpid()}-{int(time.time()*1000)}.png"
-    c_after = TMP / f"argus-crop-aft-{os.getpid()}-{int(time.time()*1000)}.png"
-    diff_out = TMP / f"argus-diff-{os.getpid()}-{int(time.time()*1000)}.png"
+    c_before = TMP / f"argus-crop-b4-{os.getpid()}-{int(time.time() * 1000)}.png"
+    c_after = TMP / f"argus-crop-aft-{os.getpid()}-{int(time.time() * 1000)}.png"
+    diff_out = TMP / f"argus-diff-{os.getpid()}-{int(time.time() * 1000)}.png"
 
     try:
         if region:
-            subprocess.run([conv, str(p_before), "-crop", f"{rw}x{rh}+{rx}+{ry}", "+repage", str(c_before)],
-                           capture_output=True, timeout=10)
-            subprocess.run([conv, str(p_after), "-crop", f"{rw}x{rh}+{rx}+{ry}", "+repage", str(c_after)],
-                           capture_output=True, timeout=10)
+            subprocess.run(
+                [
+                    conv,
+                    str(p_before),
+                    "-crop",
+                    f"{rw}x{rh}+{rx}+{ry}",
+                    "+repage",
+                    str(c_before),
+                ],
+                capture_output=True,
+                timeout=10,
+            )
+            subprocess.run(
+                [
+                    conv,
+                    str(p_after),
+                    "-crop",
+                    f"{rw}x{rh}+{rx}+{ry}",
+                    "+repage",
+                    str(c_after),
+                ],
+                capture_output=True,
+                timeout=10,
+            )
             src_a = c_before
             src_b = c_after
         else:
             src_a = p_before
             src_b = p_after
 
-        r = subprocess.run([comp, "-metric", "AE", str(src_a), str(src_b), str(diff_out)],
-                           capture_output=True, text=True, timeout=10)
+        r = subprocess.run(
+            [comp, "-metric", "AE", str(src_a), str(src_b), str(diff_out)],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
         output = (r.stderr or "").strip()
         m = re.search(r"([\d\.]+)\s*\(([\d\.]+)\)", output)
         if m:
@@ -1286,10 +1636,12 @@ def compare_regions(before_path, after_path=None, region=None, tolerance=0.01):
     finally:
         c_before.unlink(missing_ok=True)
         c_after.unlink(missing_ok=True)
-        if tmp_after: tmp_after.unlink(missing_ok=True)
+        if tmp_after:
+            tmp_after.unlink(missing_ok=True)
 
 
 # ── pointer / keyboard ───────────────────────────────────────────────────
+
 
 def _uinput_loaded():
     """uinput is a *misc* device (major 10), so it is listed in /proc/misc —
@@ -1333,12 +1685,16 @@ def pointer_status():
     if not shutil.which("ydotool"):
         return False, "ydotool not installed"
     if not _uinput_loaded():
-        return False, ("uinput kernel module not loaded — the running kernel's "
-                       "modules are missing (kernel updated without reboot?)")
+        return False, (
+            "uinput kernel module not loaded — the running kernel's "
+            "modules are missing (kernel updated without reboot?)"
+        )
     sock = _ydotool_socket()
     if not os.path.exists(sock):
-        return False, (f"ydotoold not running (no socket at {sock}); "
-                       "start it with: systemctl --user start ydotool")
+        return False, (
+            f"ydotoold not running (no socket at {sock}); "
+            "start it with: systemctl --user start ydotool"
+        )
     return True, "ok (closed-loop: every placement is verified via KWin cursorPos)"
 
 
@@ -1349,8 +1705,9 @@ def _ydotool(args, timeout=20):
     env = dict(os.environ)
     env.setdefault("YDOTOOL_SOCKET", _ydotool_socket())
     try:
-        r = subprocess.run(["ydotool", *args], capture_output=True, text=True,
-                           timeout=timeout, env=env)
+        r = subprocess.run(
+            ["ydotool", *args], capture_output=True, text=True, timeout=timeout, env=env
+        )
     except subprocess.TimeoutExpired:
         return {"ok": False, "error": "ydotool timed out"}
     return {"ok": r.returncode == 0, "error": (r.stderr or "")[:300]}
@@ -1394,7 +1751,8 @@ def _click_code(button, mask):
 _JS_CURSOR = """
 (function () {
     var p = workspace.cursorPos;
-    console.info("__MARKER__" + JSON.stringify({x: Math.round(p.x), y: Math.round(p.y)}));
+    console.info(
+        "__MARKER__" + JSON.stringify({x: Math.round(p.x), y: Math.round(p.y)}));
 })();
 """
 
@@ -1410,8 +1768,10 @@ def cursor_position(timeout=5):
     except Exception as e:
         return {"ok": False, "error": f"cursor query failed: {e}"}
     if not raw:
-        return {"ok": False,
-                "error": "cursor query returned nothing (KWin scripting unreachable?)"}
+        return {
+            "ok": False,
+            "error": "cursor query returned nothing (KWin scripting unreachable?)",
+        }
     try:
         pos = json.loads(raw)
         return {"ok": True, "x": int(pos["x"]), "y": int(pos["y"])}
@@ -1442,20 +1802,31 @@ def _place_pointer(x, y):
         # Can't see the cursor: one absolute attempt, honestly flagged.
         # This is the old behavior, kept only as a degraded fallback.
         moved = _ydotool(["mousemove", "--absolute", str(tx), str(ty)])
-        return {"ok": bool(moved.get("ok")), "x": None, "y": None,
-                "requested": requested, "residual": None, "corrections": 0,
-                "verified": False,
-                "error": moved.get("error") or cur.get("error"),
-                "note": "cursor unreadable — placement unverified"}
+        return {
+            "ok": bool(moved.get("ok")),
+            "x": None,
+            "y": None,
+            "requested": requested,
+            "residual": None,
+            "corrections": 0,
+            "verified": False,
+            "error": moved.get("error") or cur.get("error"),
+            "note": "cursor unreadable — placement unverified",
+        }
     corrections = 0
     for _ in range(1 + POINTER_MAX_CORRECTIONS):
         dx, dy = tx - cur["x"], ty - cur["y"]
         if abs(dx) <= POINTER_TOLERANCE_PX and abs(dy) <= POINTER_TOLERANCE_PX:
             mx, my = to_screenshot_px(cur["x"], cur["y"])
-            return {"ok": True, "x": mx, "y": my,
-                    "requested": requested,
-                    "residual": round(max(abs(dx), abs(dy)) * _screen_scale()),
-                    "corrections": corrections, "verified": True}
+            return {
+                "ok": True,
+                "x": mx,
+                "y": my,
+                "requested": requested,
+                "residual": round(max(abs(dx), abs(dy)) * _screen_scale()),
+                "corrections": corrections,
+                "verified": True,
+            }
         # Full stride on the first round (fast when unaccelerated, the
         # common case), half strides after: a proportional correction with
         # gain 1 oscillates when pointer acceleration overshoots (gain*accel
@@ -1468,34 +1839,59 @@ def _place_pointer(x, y):
         step = _ydotool(["mousemove", "-x", str(sx), "-y", str(sy)])
         if not step.get("ok"):
             mx, my = to_screenshot_px(cur["x"], cur["y"])
-            return {"ok": False, "x": mx, "y": my,
-                    "requested": requested,
-                    "residual": round(max(abs(dx), abs(dy)) * _screen_scale()),
-                    "corrections": corrections, "verified": True,
-                    "error": step.get("error") or "relative move failed"}
+            return {
+                "ok": False,
+                "x": mx,
+                "y": my,
+                "requested": requested,
+                "residual": round(max(abs(dx), abs(dy)) * _screen_scale()),
+                "corrections": corrections,
+                "verified": True,
+                "error": step.get("error") or "relative move failed",
+            }
         corrections += 1
         cur = cursor_position()
         if not cur.get("ok"):
-            return {"ok": False, "x": None, "y": None,
-                    "requested": requested, "residual": None,
-                    "corrections": corrections, "verified": False,
-                    "error": cur.get("error")}
+            return {
+                "ok": False,
+                "x": None,
+                "y": None,
+                "requested": requested,
+                "residual": None,
+                "corrections": corrections,
+                "verified": False,
+                "error": cur.get("error"),
+            }
     dx, dy = tx - cur["x"], ty - cur["y"]
     mx, my = to_screenshot_px(cur["x"], cur["y"])
-    return {"ok": False, "x": mx, "y": my,
-            "requested": requested, "residual": round(max(abs(dx), abs(dy)) * _screen_scale()),
-            "corrections": corrections, "verified": True,
-            "error": f"did not converge within {POINTER_TOLERANCE_PX}px (logical) "
-                     f"after {corrections} corrections (pointer acceleration?)",
-            "note": "pointer is at the reported x/y, not at the request"}
+    return {
+        "ok": False,
+        "x": mx,
+        "y": my,
+        "requested": requested,
+        "residual": round(max(abs(dx), abs(dy)) * _screen_scale()),
+        "corrections": corrections,
+        "verified": True,
+        "error": f"did not converge within {POINTER_TOLERANCE_PX}px (logical) "
+        f"after {corrections} corrections (pointer acceleration?)",
+        "note": "pointer is at the reported x/y, not at the request",
+    }
 
 
 MOD_ALIASES = {
-    "ctrl": "ctrl", "control": "ctrl", "ctl": "ctrl",
-    "alt": "alt", "option": "alt", "opt": "alt",
+    "ctrl": "ctrl",
+    "control": "ctrl",
+    "ctl": "ctrl",
+    "alt": "alt",
+    "option": "alt",
+    "opt": "alt",
     "shift": "shift",
-    "super": "logo", "win": "logo", "cmd": "logo", "command": "logo",
-    "meta": "logo", "logo": "logo",
+    "super": "logo",
+    "win": "logo",
+    "cmd": "logo",
+    "command": "logo",
+    "meta": "logo",
+    "logo": "logo",
 }
 
 MOD_KEYCODES = {"ctrl": 29, "shift": 42, "alt": 56, "logo": 125}
@@ -1554,9 +1950,15 @@ def click(x, y, button="left", clicks=1, modifiers=None):
     finally:
         for m in reversed(mod_keys):
             _ydotool(["key", f"{MOD_KEYCODES[m]}:0"])
-    out = {"ok": bool(r.get("ok")), "x": placed["x"], "y": placed["y"],
-           "requested": placed["requested"], "residual": placed["residual"],
-           "corrections": placed["corrections"], "verified": placed["verified"]}
+    out = {
+        "ok": bool(r.get("ok")),
+        "x": placed["x"],
+        "y": placed["y"],
+        "requested": placed["requested"],
+        "residual": placed["residual"],
+        "corrections": placed["corrections"],
+        "verified": placed["verified"],
+    }
     if mod_keys:
         out["modifiers"] = mod_keys
     if not r.get("ok"):
@@ -1565,7 +1967,10 @@ def click(x, y, button="left", clicks=1, modifiers=None):
 
 
 def hover(x, y, duration=0.4):
-    """Move the pointer to (x, y) closed-loop and pause to trigger hover effects/tooltips."""
+    (
+        """Move the pointer to (x, y) closed-loop and pause to trigger hover """
+        """effects/tooltips."""
+    )
     placed = _place_pointer(x, y)
     if not placed.get("ok"):
         return placed
@@ -1577,7 +1982,11 @@ def hover(x, y, duration=0.4):
 
 
 def mouse_down(button="left", x=None, y=None):
-    """Press and hold mouse button (left/right/middle), optionally placing pointer first."""
+    (
+        """Press and hold mouse button (left/right/middle), optionally placing """
+        """pointer """
+        """first."""
+    )
     if x is not None and y is not None:
         placed = _place_pointer(x, y)
         if not placed.get("ok"):
@@ -1592,7 +2001,11 @@ def mouse_down(button="left", x=None, y=None):
 
 
 def mouse_up(button="left", x=None, y=None):
-    """Release a held mouse button (left/right/middle), optionally placing pointer first."""
+    (
+        """Release a held mouse button (left/right/middle), optionally placing """
+        """pointer """
+        """first."""
+    )
     if x is not None and y is not None:
         placed = _place_pointer(x, y)
         if not placed.get("ok"):
@@ -1652,19 +2065,26 @@ def drag(x1, y1, x2, y2, button="left", steps=1, smooth=True):
         return end
     time.sleep(0.05)
     up = _ydotool(["click", _click_code(button, 0x80)])
-    return {"ok": bool(up.get("ok")),
-            "start": [start["x"], start["y"]], "end": [end["x"], end["y"]],
-            "verified": start["verified"] and end["verified"],
-            **({} if up.get("ok") else {"error": up.get("error") or "release failed"})}
+    return {
+        "ok": bool(up.get("ok")),
+        "start": [start["x"], start["y"]],
+        "end": [end["x"], end["y"]],
+        "verified": start["verified"] and end["verified"],
+        **({} if up.get("ok") else {"error": up.get("error") or "release failed"}),
+    }
 
 
 def drag_path(points, button="left", duration=0.5, smooth=True):
     """Perform a continuous drag along a sequence of waypoints: [(x1,y1), (x2,y2), ...].
-    Holds the button down, smoothly moves across all waypoints, and releases at the final point.
+    Holds the button down, smoothly moves across all waypoints, and releases
+    at the final point.
     Ensures the button is always released even on error.
     """
     if not points or len(points) < 2:
-        return {"ok": False, "error": "drag_path requires at least 2 points: [(x1, y1), (x2, y2), ...]"}
+        return {
+            "ok": False,
+            "error": "drag_path requires at least 2 points: [(x1, y1), (x2, y2), ...]",
+        }
 
     clean_pts = []
     for pt in points:
@@ -1717,7 +2137,9 @@ def drag_path(points, button="left", duration=0.5, smooth=True):
         button_released = True
         end_x, end_y = clean_pts[-1]
         cur = cursor_position()
-        mx, my = to_screenshot_px(cur["x"], cur["y"]) if cur.get("ok") else (end_x, end_y)
+        mx, my = (
+            to_screenshot_px(cur["x"], cur["y"]) if cur.get("ok") else (end_x, end_y)
+        )
         return {
             "ok": bool(up.get("ok")),
             "button": button,
@@ -1731,9 +2153,9 @@ def drag_path(points, button="left", duration=0.5, smooth=True):
             _ydotool(["click", _click_code(button, 0x80)])
 
 
-
 def scroll(amount, x=None, y=None, direction="down"):
-    """Scroll the wheel by `amount` steps in `direction` ('down', 'up', 'left', 'right'),
+    """Scroll the wheel by `amount` steps in `direction`
+    ('down', 'up', 'left', 'right'),
     optionally moving to (x, y) first. Wheel deltas are relative and calibrated.
     """
     if x is not None and y is not None:
@@ -1783,10 +2205,11 @@ def type_text(text, clear_before=False):
     if backend == "ydotool":
         return _ydotool(["type", "--", text])
     if backend == "wtype":
-        r = subprocess.run(["wtype", "--", text], capture_output=True, text=True, timeout=20)
+        r = subprocess.run(
+            ["wtype", "--", text], capture_output=True, text=True, timeout=20
+        )
         return {"ok": r.returncode == 0, "error": (r.stderr or "")[:300]}
     return {"ok": False, "error": why}
-
 
 
 # ── key input ────────────────────────────────────────────────────────────
@@ -1799,64 +2222,188 @@ def type_text(text, clear_before=False):
 
 # Linux input-event codes (ydotool) and xkb keysym names (wtype)
 KEYCODES = {
-    "return": 28, "enter": 28, "escape": 1, "esc": 1, "tab": 15,
-    "backspace": 14, "space": 57, "delete": 111, "insert": 110,
-    "up": 103, "down": 108, "left": 105, "right": 106,
-    "home": 102, "end": 107, "pageup": 104, "pagedown": 109,
-    "f1": 59, "f2": 60, "f3": 61, "f4": 62, "f5": 63, "f6": 64,
-    "f7": 65, "f8": 66, "f9": 67, "f10": 68, "f11": 87, "f12": 88,
-    "minus": 12, "equal": 13, "comma": 51, "dot": 52, "period": 52,
-    "slash": 53, "semicolon": 39, "apostrophe": 40, "grave": 41,
-    "backtick": 41, "tilde": 41,
-    "backslash": 43, "leftbrace": 26, "rightbrace": 27,
-    "capslock": 58, "caps": 58, "numlock": 69, "scrolllock": 70,
-    "printscreen": 99, "print": 99, "prtscn": 99, "sysrq": 99,
-    "super": 125, "meta": 125, "win": 125, "logo": 125,
-    "ctrl": 29, "control": 29, "alt": 56, "shift": 42,
-    "mute": 113, "audiomute": 113, "volumedown": 114, "voldown": 114,
-    "volumeup": 115, "volup": 115, "menu": 139,
-    "playpause": 164, "play": 164, "pause": 119,
-    "nextsong": 163, "nexttrack": 163,
-    "prevsong": 165, "prevtrack": 165, "previoussong": 165,
-    "brightnessdown": 224, "brightnessup": 225,
+    "return": 28,
+    "enter": 28,
+    "escape": 1,
+    "esc": 1,
+    "tab": 15,
+    "backspace": 14,
+    "space": 57,
+    "delete": 111,
+    "insert": 110,
+    "up": 103,
+    "down": 108,
+    "left": 105,
+    "right": 106,
+    "home": 102,
+    "end": 107,
+    "pageup": 104,
+    "pagedown": 109,
+    "f1": 59,
+    "f2": 60,
+    "f3": 61,
+    "f4": 62,
+    "f5": 63,
+    "f6": 64,
+    "f7": 65,
+    "f8": 66,
+    "f9": 67,
+    "f10": 68,
+    "f11": 87,
+    "f12": 88,
+    "minus": 12,
+    "equal": 13,
+    "comma": 51,
+    "dot": 52,
+    "period": 52,
+    "slash": 53,
+    "semicolon": 39,
+    "apostrophe": 40,
+    "grave": 41,
+    "backtick": 41,
+    "tilde": 41,
+    "backslash": 43,
+    "leftbrace": 26,
+    "rightbrace": 27,
+    "capslock": 58,
+    "caps": 58,
+    "numlock": 69,
+    "scrolllock": 70,
+    "printscreen": 99,
+    "print": 99,
+    "prtscn": 99,
+    "sysrq": 99,
+    "super": 125,
+    "meta": 125,
+    "win": 125,
+    "logo": 125,
+    "ctrl": 29,
+    "control": 29,
+    "alt": 56,
+    "shift": 42,
+    "mute": 113,
+    "audiomute": 113,
+    "volumedown": 114,
+    "voldown": 114,
+    "volumeup": 115,
+    "volup": 115,
+    "menu": 139,
+    "playpause": 164,
+    "play": 164,
+    "pause": 119,
+    "nextsong": 163,
+    "nexttrack": 163,
+    "prevsong": 165,
+    "prevtrack": 165,
+    "previoussong": 165,
+    "brightnessdown": 224,
+    "brightnessup": 225,
 }
 for _n in range(13, 25):
     KEYCODES[f"f{_n}"] = 183 + (_n - 13)
 for _i, _c in enumerate("abcdefghijklmnopqrstuvwxyz"):
-    KEYCODES[_c] = [30, 48, 46, 32, 18, 33, 34, 35, 23, 36, 37, 38, 50,
-                    49, 24, 25, 16, 19, 31, 20, 22, 47, 17, 45, 21, 44][_i]
+    KEYCODES[_c] = [
+        30,
+        48,
+        46,
+        32,
+        18,
+        33,
+        34,
+        35,
+        23,
+        36,
+        37,
+        38,
+        50,
+        49,
+        24,
+        25,
+        16,
+        19,
+        31,
+        20,
+        22,
+        47,
+        17,
+        45,
+        21,
+        44,
+    ][_i]
 for _i, _c in enumerate("1234567890"):
     KEYCODES[_c] = [2, 3, 4, 5, 6, 7, 8, 9, 10, 11][_i]
 
 # xkb keysym names for wtype (it rejects "Enter"/"Esc" spellings)
 KEYSYMS = {
-    "return": "Return", "enter": "Return", "escape": "Escape", "esc": "Escape",
-    "tab": "Tab", "backspace": "BackSpace", "space": "space", "delete": "Delete",
-    "insert": "Insert", "up": "Up", "down": "Down", "left": "Left", "right": "Right",
-    "home": "Home", "end": "End", "pageup": "Prior", "pagedown": "Next",
-    "minus": "minus", "equal": "equal", "comma": "comma", "dot": "period",
-    "period": "period", "slash": "slash", "semicolon": "semicolon",
-    "apostrophe": "apostrophe", "grave": "grave", "backslash": "backslash",
-    "backtick": "grave", "tilde": "asciitilde",
-    "leftbrace": "braceleft", "rightbrace": "braceright",
-    "capslock": "Caps_Lock", "caps": "Caps_Lock", "numlock": "Num_Lock",
-    "scrolllock": "Scroll_Lock", "printscreen": "Print", "print": "Print",
-    "prtscn": "Print", "sysrq": "Print", "mute": "XF86AudioMute",
-    "super": "Super_L", "meta": "Super_L", "win": "Super_L", "logo": "Super_L",
-    "ctrl": "Control_L", "control": "Control_L", "alt": "Alt_L", "shift": "Shift_L",
-    "audiomute": "XF86AudioMute", "volumedown": "XF86AudioLowerVolume",
-    "voldown": "XF86AudioLowerVolume", "volumeup": "XF86AudioRaiseVolume",
-    "volup": "XF86AudioRaiseVolume", "menu": "Menu",
-    "playpause": "XF86AudioPlay", "play": "XF86AudioPlay", "pause": "Pause",
-    "nextsong": "XF86AudioNext", "nexttrack": "XF86AudioNext",
-    "prevsong": "XF86AudioPrev", "prevtrack": "XF86AudioPrev",
+    "return": "Return",
+    "enter": "Return",
+    "escape": "Escape",
+    "esc": "Escape",
+    "tab": "Tab",
+    "backspace": "BackSpace",
+    "space": "space",
+    "delete": "Delete",
+    "insert": "Insert",
+    "up": "Up",
+    "down": "Down",
+    "left": "Left",
+    "right": "Right",
+    "home": "Home",
+    "end": "End",
+    "pageup": "Prior",
+    "pagedown": "Next",
+    "minus": "minus",
+    "equal": "equal",
+    "comma": "comma",
+    "dot": "period",
+    "period": "period",
+    "slash": "slash",
+    "semicolon": "semicolon",
+    "apostrophe": "apostrophe",
+    "grave": "grave",
+    "backslash": "backslash",
+    "backtick": "grave",
+    "tilde": "asciitilde",
+    "leftbrace": "braceleft",
+    "rightbrace": "braceright",
+    "capslock": "Caps_Lock",
+    "caps": "Caps_Lock",
+    "numlock": "Num_Lock",
+    "scrolllock": "Scroll_Lock",
+    "printscreen": "Print",
+    "print": "Print",
+    "prtscn": "Print",
+    "sysrq": "Print",
+    "mute": "XF86AudioMute",
+    "super": "Super_L",
+    "meta": "Super_L",
+    "win": "Super_L",
+    "logo": "Super_L",
+    "ctrl": "Control_L",
+    "control": "Control_L",
+    "alt": "Alt_L",
+    "shift": "Shift_L",
+    "audiomute": "XF86AudioMute",
+    "volumedown": "XF86AudioLowerVolume",
+    "voldown": "XF86AudioLowerVolume",
+    "volumeup": "XF86AudioRaiseVolume",
+    "volup": "XF86AudioRaiseVolume",
+    "menu": "Menu",
+    "playpause": "XF86AudioPlay",
+    "play": "XF86AudioPlay",
+    "pause": "Pause",
+    "nextsong": "XF86AudioNext",
+    "nexttrack": "XF86AudioNext",
+    "prevsong": "XF86AudioPrev",
+    "prevtrack": "XF86AudioPrev",
     "previoussong": "XF86AudioPrev",
-    "brightnessdown": "XF86MonBrightnessDown", "brightnessup": "XF86MonBrightnessUp",
+    "brightnessdown": "XF86MonBrightnessDown",
+    "brightnessup": "XF86MonBrightnessUp",
 }
 for _n in range(1, 25):
     KEYSYMS[f"f{_n}"] = f"F{_n}"
 
-_WTYPE_SUPPORT = {}
+_WTYPE_SUPPORT: dict[str, bool] = {}
 
 
 def wtype_supported():
@@ -1867,7 +2414,9 @@ def wtype_supported():
         _WTYPE_SUPPORT["ok"] = False
         return False
     try:
-        r = subprocess.run(["wtype", "-k", "F24"], capture_output=True, text=True, timeout=10)
+        r = subprocess.run(
+            ["wtype", "-k", "F24"], capture_output=True, text=True, timeout=10
+        )
         _WTYPE_SUPPORT["ok"] = "does not support" not in (r.stderr or "")
     except Exception:
         _WTYPE_SUPPORT["ok"] = False
@@ -1881,13 +2430,16 @@ def input_backend():
         return "ydotool", "ok"
     if wtype_supported():
         return "wtype", "ok"
-    return None, ("no keyboard backend: wtype needs the virtual-keyboard protocol "
-                  "(wlroots only — KWin does not implement it), and ydotool needs "
-                  "uinput (" + why + ")")
+    return None, (
+        "no keyboard backend: wtype needs the virtual-keyboard protocol "
+        "(wlroots only — KWin does not implement it), and ydotool needs "
+        "uinput (" + why + ")"
+    )
 
 
 def parse_chord(spec):
-    """'ctrl+t' / 'Ctrl + T' / 'ctrl-shift+t' / 'Return' / 'shift+Page-Down' -> (mods, key).
+    """'ctrl+t' / 'Ctrl + T' / 'ctrl-shift+t' / 'Return' / 'shift+Page-Down'
+    -> (mods, key).
 
     '-' is only ever consumed as a modifier separator, one recognized
     modifier at a time from the front — never by blanket-replacing every '-'
@@ -1904,7 +2456,9 @@ def parse_chord(spec):
     raw = str(spec).strip()
     if not raw:
         return [], ""
-    parts = re.split(r"([+\-])", raw)  # keeps the separators so the key tail can be rejoined verbatim
+    parts = re.split(
+        r"([+\-])", raw
+    )  # keeps the separators so the key tail can be rejoined verbatim
     mods, i = [], 0
     while i + 1 < len(parts):
         low = parts[i].strip().lower()
@@ -1932,8 +2486,11 @@ def key_press(key):
     if backend == "ydotool":
         code = KEYCODES.get(_norm_key(k))
         if code is None:
-            return {"ok": False, "error": f"unknown key {k!r}",
-                    "hint": "use names like Return, Escape, Tab, F5, or a single character"}
+            return {
+                "ok": False,
+                "error": f"unknown key {k!r}",
+                "hint": "use names like Return, Escape, Tab, F5, or a single character",
+            }
         seq = []
         for m in mods:
             seq.append(f"{MOD_KEYCODES[m]}:1")
@@ -1945,8 +2502,11 @@ def key_press(key):
     if backend == "wtype":
         sym = KEYSYMS.get(_norm_key(k), k if len(k) == 1 else None)
         if sym is None:
-            return {"ok": False, "error": f"unknown key {k!r}",
-                    "hint": "use names like Return, Escape, Tab, F5, or a single character"}
+            return {
+                "ok": False,
+                "error": f"unknown key {k!r}",
+                "hint": "use names like Return, Escape, Tab, F5, or a single character",
+            }
         cmd = ["wtype"]
         for m in mods:
             cmd += ["-M", m]
@@ -1981,9 +2541,14 @@ def key_down(key):
         raw = str(key).strip().lower()
         if raw in MOD_ALIASES:
             canon = MOD_ALIASES[raw]
-            r = subprocess.run(["wtype", "-M", canon], capture_output=True, text=True, timeout=10)
+            r = subprocess.run(
+                ["wtype", "-M", canon], capture_output=True, text=True, timeout=10
+            )
             return {"ok": r.returncode == 0, "error": (r.stderr or "")[:300]}
-        return {"ok": False, "error": "holding non-modifier keys is only supported on ydotool backend"}
+        return {
+            "ok": False,
+            "error": "holding non-modifier keys is only supported on ydotool backend",
+        }
     return {"ok": False, "error": why}
 
 
@@ -1999,9 +2564,14 @@ def key_up(key):
         raw = str(key).strip().lower()
         if raw in MOD_ALIASES:
             canon = MOD_ALIASES[raw]
-            r = subprocess.run(["wtype", "-m", canon], capture_output=True, text=True, timeout=10)
+            r = subprocess.run(
+                ["wtype", "-m", canon], capture_output=True, text=True, timeout=10
+            )
             return {"ok": r.returncode == 0, "error": (r.stderr or "")[:300]}
-        return {"ok": False, "error": "holding non-modifier keys is only supported on ydotool backend"}
+        return {
+            "ok": False,
+            "error": "holding non-modifier keys is only supported on ydotool backend",
+        }
     return {"ok": False, "error": why}
 
 
@@ -2024,8 +2594,14 @@ def clipboard_set(text):
     if not shutil.which("wl-copy"):
         return {"ok": False, "error": "wl-copy not installed (package: wl-clipboard)"}
     try:
-        r = subprocess.run(["wl-copy"], input=text, stdout=subprocess.DEVNULL,
-                           stderr=subprocess.DEVNULL, text=True, timeout=10)
+        r = subprocess.run(
+            ["wl-copy"],
+            input=text,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            timeout=10,
+        )
     except subprocess.TimeoutExpired:
         return {"ok": False, "error": "wl-copy timed out"}
     return {"ok": r.returncode == 0}
@@ -2047,11 +2623,16 @@ def clipboard_get():
     if not shutil.which("wl-paste"):
         return {"ok": False, "error": "wl-paste not installed (package: wl-clipboard)"}
     try:
-        r = subprocess.run(["wl-paste", "--no-newline"], capture_output=True, text=True, timeout=10)
+        r = subprocess.run(
+            ["wl-paste", "--no-newline"], capture_output=True, text=True, timeout=10
+        )
     except subprocess.TimeoutExpired:
         return {"ok": False, "error": "wl-paste timed out"}
     if r.returncode != 0:
-        return {"ok": False, "error": (r.stderr or "clipboard empty or unavailable")[:300]}
+        return {
+            "ok": False,
+            "error": (r.stderr or "clipboard empty or unavailable")[:300],
+        }
     text = r.stdout
     truncated = len(text) > CLIPBOARD_MAX_CHARS
     return {"ok": True, "text": text[:CLIPBOARD_MAX_CHARS], "truncated": truncated}
@@ -2060,8 +2641,14 @@ def clipboard_get():
 def capabilities():
     ptr_ok, ptr_why = pointer_status()
     kb_backend, kb_detail = input_backend()  # was called 3x separately below
-    scripting = run_script("(function(){ console.info('__MARKER__ok'); })();",
-                           "ARGUS_PROBE_", timeout=5) is not None
+    scripting = (
+        run_script(
+            "(function(){ console.info('__MARKER__ok'); })();",
+            "ARGUS_PROBE_",
+            timeout=5,
+        )
+        is not None
+    )
     return {
         "kwin_dbus": available(),
         "window_inventory": scripting or available(),

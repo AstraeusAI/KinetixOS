@@ -9,6 +9,7 @@ Servers are spawned per task and shut down with it. That keeps the runtime
 stateless (no daemon required yet) at the cost of a cold start per file, which
 is the right trade until the socket daemon lands.
 """
+
 import json
 import os
 import queue
@@ -21,19 +22,24 @@ from pathlib import Path
 # language id → server argv. Binaries are looked up on PATH and in the
 # agent's private LSP prefix (installed without root).
 SERVERS = {
-    "python":       [["pyright-langserver", "--stdio"]],
-    "javascript":   [["typescript-language-server", "--stdio"]],
-    "typescript":   [["typescript-language-server", "--stdio"]],
+    "python": [["pyright-langserver", "--stdio"]],
+    "javascript": [["typescript-language-server", "--stdio"]],
+    "typescript": [["typescript-language-server", "--stdio"]],
     "javascriptreact": [["typescript-language-server", "--stdio"]],
     "typescriptreact": [["typescript-language-server", "--stdio"]],
-    "qml":          [["qmlls"], ["qmlls6"]],
-    "c":            [["clangd"]],
-    "cpp":          [["clangd"]],
-    "rust":         [["rust-analyzer"]],
-    "lua":          [["lua-language-server"]],
+    "qml": [["qmlls"], ["qmlls6"]],
+    "c": [["clangd"]],
+    "cpp": [["clangd"]],
+    "rust": [["rust-analyzer"]],
+    "lua": [["lua-language-server"]],
 }
 
-PRIVATE_BIN = Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local/share")) / "argus" / "lsp" / "bin"
+PRIVATE_BIN = (
+    Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local/share"))
+    / "argus"
+    / "lsp"
+    / "bin"
+)
 
 SEVERITY = {1: "error", 2: "warning", 3: "info", 4: "hint"}
 
@@ -155,32 +161,45 @@ class _Client:
     # ── lifecycle ────────────────────────────────────────────────────────
     def start(self, init_timeout=None):
         self.proc = subprocess.Popen(
-            self.argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL, cwd=str(self.root))
+            self.argv,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            cwd=str(self.root),
+        )
         self._reader = threading.Thread(target=self._read_loop, daemon=True)
         self._reader.start()
-        rid = self.request("initialize", {
-            "processId": os.getpid(),
-            "rootUri": self.root.as_uri(),
-            "capabilities": {
-                "textDocument": {
-                    "publishDiagnostics": {"relatedInformation": True},
-                    "documentSymbol": {"hierarchicalDocumentSymbolSupport": True},
+        rid = self.request(
+            "initialize",
+            {
+                "processId": os.getpid(),
+                "rootUri": self.root.as_uri(),
+                "capabilities": {
+                    "textDocument": {
+                        "publishDiagnostics": {"relatedInformation": True},
+                        "documentSymbol": {"hierarchicalDocumentSymbolSupport": True},
+                    },
                 },
+                "initializationOptions": {},
             },
-            "initializationOptions": {},
-        })
-        resp = self.wait_for(lambda m: m.get("id") == rid,
-                             timeout=INIT_TIMEOUT if init_timeout is None else init_timeout)
+        )
+        resp = self.wait_for(
+            lambda m: m.get("id") == rid,
+            timeout=INIT_TIMEOUT if init_timeout is None else init_timeout,
+        )
         # A server that never answers (cold pyright under load, a dead process,
         # a protocol mismatch) is not an initialized server: continuing used to
         # make every later call run against nothing and be reported as a clean
         # file. Fail here, where the reason is still knowable.
         if resp is None:
-            raise RuntimeError(f"language server did not answer initialize within "
-                               f"{INIT_TIMEOUT if init_timeout is None else init_timeout}s")
+            raise RuntimeError(
+                f"language server did not answer initialize within "
+                f"{INIT_TIMEOUT if init_timeout is None else init_timeout}s"
+            )
         if resp.get("error"):
-            raise RuntimeError("language server rejected initialize: " + str(resp["error"])[:200])
+            raise RuntimeError(
+                "language server rejected initialize: " + str(resp["error"])[:200]
+            )
         self.notify("initialized", {})
 
     def stop(self):
@@ -234,19 +253,35 @@ def diagnostics(path, text, language, root, timeout=25):
     """Return {ok, language, server, diagnostics:[...], error?}."""
     argv = find_server(language)
     if not argv:
-        return {"ok": False, "language": language, "server": None,
-                "error": f"no language server installed for {language}",
-                "diagnostics": []}
+        return {
+            "ok": False,
+            "language": language,
+            "server": None,
+            "error": f"no language server installed for {language}",
+            "diagnostics": [],
+        }
     client = _Client(argv, root)
     try:
         client.start()
         uri = _uri(path)
-        client.notify("textDocument/didOpen", {"textDocument": {
-            "uri": uri, "languageId": language, "version": 1, "text": text}})
+        client.notify(
+            "textDocument/didOpen",
+            {
+                "textDocument": {
+                    "uri": uri,
+                    "languageId": language,
+                    "version": 1,
+                    "text": text,
+                }
+            },
+        )
         msg = client.wait_for(
-            lambda m: m.get("method") == "textDocument/publishDiagnostics"
-                      and m.get("params", {}).get("uri") == uri,
-            timeout=timeout)
+            lambda m: (
+                m.get("method") == "textDocument/publishDiagnostics"
+                and m.get("params", {}).get("uri") == uri
+            ),
+            timeout=timeout,
+        )
         if msg is None:
             # Not a clean file — no answer at all. Reporting ok:True with an
             # empty list here was indistinguishable from "the server checked and
@@ -254,28 +289,43 @@ def diagnostics(path, text, language, root, timeout=25):
             # a file no server had analysed (symbols() already returned ok:False
             # in the same situation, so the two halves of this module disagreed
             # about what failure looks like).
-            return {"ok": False, "language": language, "server": argv[0], "diagnostics": [],
-                    "error": f"language server published no diagnostics within {timeout}s "
-                             "(timed out, or it never started) — the file was not checked"}
+            return {
+                "ok": False,
+                "language": language,
+                "server": argv[0],
+                "diagnostics": [],
+                "error": f"language server published no diagnostics within {timeout}s "
+                "(timed out, or it never started) — the file was not checked",
+            }
         src_lines = text.splitlines()
         out = []
         for d in msg["params"].get("diagnostics", []):
             rng = d.get("range", {}).get("start", {})
             line0 = rng.get("line", 0)
             char16 = rng.get("character", 0)
-            col = (_utf16_to_col(src_lines[line0], char16) + 1
-                   if 0 <= line0 < len(src_lines) else char16 + 1)
-            out.append({
-                "line": line0 + 1,
-                "col": col,
-                "severity": SEVERITY.get(d.get("severity", 1), "error"),
-                "message": (d.get("message") or "").strip()[:400],
-                "source": d.get("source", ""),
-            })
+            col = (
+                _utf16_to_col(src_lines[line0], char16) + 1
+                if 0 <= line0 < len(src_lines)
+                else char16 + 1
+            )
+            out.append(
+                {
+                    "line": line0 + 1,
+                    "col": col,
+                    "severity": SEVERITY.get(d.get("severity", 1), "error"),
+                    "message": (d.get("message") or "").strip()[:400],
+                    "source": d.get("source", ""),
+                }
+            )
         return {"ok": True, "language": language, "server": argv[0], "diagnostics": out}
     except Exception as e:
-        return {"ok": False, "language": language, "server": argv[0] if argv else None,
-                "error": str(e), "diagnostics": []}
+        return {
+            "ok": False,
+            "language": language,
+            "server": argv[0] if argv else None,
+            "error": str(e),
+            "diagnostics": [],
+        }
     finally:
         client.stop()
 
@@ -289,24 +339,48 @@ def symbols(path, text, language, root, timeout=25):
     try:
         client.start()
         uri = _uri(path)
-        client.notify("textDocument/didOpen", {"textDocument": {
-            "uri": uri, "languageId": language, "version": 1, "text": text}})
-        rid = client.request("textDocument/documentSymbol", {"textDocument": {"uri": uri}})
+        client.notify(
+            "textDocument/didOpen",
+            {
+                "textDocument": {
+                    "uri": uri,
+                    "languageId": language,
+                    "version": 1,
+                    "text": text,
+                }
+            },
+        )
+        rid = client.request(
+            "textDocument/documentSymbol", {"textDocument": {"uri": uri}}
+        )
         msg = client.wait_for(lambda m: m.get("id") == rid, timeout=timeout)
         if not msg:
             return {"ok": False, "error": "no symbol response"}
         if msg.get("error"):
-            return {"ok": False, "error": "documentSymbol failed: " + str(msg["error"])[:200]}
+            return {
+                "ok": False,
+                "error": "documentSymbol failed: " + str(msg["error"])[:200],
+            }
         out = []
+
         def walk(items, depth=0):
             for it in items or []:
                 name = it.get("name")
                 if name:
-                    rng = (it.get("range") or it.get("location", {}).get("range") or {}).get("start", {})
-                    out.append({"name": name, "kind": it.get("kind"),
-                                "line": rng.get("line", 0) + 1, "depth": depth})
+                    rng = (
+                        it.get("range") or it.get("location", {}).get("range") or {}
+                    ).get("start", {})
+                    out.append(
+                        {
+                            "name": name,
+                            "kind": it.get("kind"),
+                            "line": rng.get("line", 0) + 1,
+                            "depth": depth,
+                        }
+                    )
                 if it.get("children"):
                     walk(it["children"], depth + 1)
+
         walk(msg.get("result"))
         return {"ok": True, "symbols": out[:200]}
     except Exception as e:

@@ -5,6 +5,7 @@ here. `checkpoint_restore` puts them back. Without this, nobody should let an
 agent near a repository — and "the model will be careful" is not a safety
 mechanism.
 """
+
 import itertools
 import json
 import os
@@ -47,7 +48,9 @@ def _prune_stale_sessions(max_age_days=MAX_AGE_DAYS):
         if not d.is_dir():
             continue
         try:
-            newest = max((f.stat().st_mtime for f in d.rglob("*") if f.is_file()), default=0)
+            newest = max(
+                (f.stat().st_mtime for f in d.rglob("*") if f.is_file()), default=0
+            )
         except OSError:
             continue
         if newest and newest < cutoff:
@@ -72,9 +75,16 @@ class Checkpoints:
         """Snapshot `path` before it is modified. Returns a checkpoint id."""
         p = Path(path)
         cid = f"c{self._seq()}"
-        entry = {"id": cid, "ts": int(time.time()), "path": str(p),
-                 "rel": str(p.relative_to(workspace)) if workspace and str(p).startswith(str(workspace)) else str(p),
-                 "existed": p.exists(), "reason": reason}
+        entry = {
+            "id": cid,
+            "ts": int(time.time()),
+            "path": str(p),
+            "rel": str(p.relative_to(workspace))
+            if workspace and str(p).startswith(str(workspace))
+            else str(p),
+            "existed": p.exists(),
+            "reason": reason,
+        }
         if p.exists():
             dest = self.dir / cid
             dest.mkdir(parents=True, exist_ok=True)
@@ -107,11 +117,18 @@ class Checkpoints:
                 continue
             target = Path(e["path"])
             if root is not None:
-                resolved = (target.resolve() if target.exists()
-                            else target.parent.resolve() / target.name)
+                resolved = (
+                    target.resolve()
+                    if target.exists()
+                    else target.parent.resolve() / target.name
+                )
                 if resolved != root and root not in resolved.parents:
-                    return {"ok": False, "error": f"checkpoint {cid} points outside the "
-                            f"workspace ({e.get('rel', e['path'])}) — refusing to write there"}
+                    return {
+                        "ok": False,
+                        "error": f"checkpoint {cid} points outside the "
+                        f"workspace "
+                        f"({e.get('rel', e['path'])}) — refusing to write there",
+                    }
             if not e.get("existed"):
                 # file was created by the agent — restoring means removing it
                 if target.exists():

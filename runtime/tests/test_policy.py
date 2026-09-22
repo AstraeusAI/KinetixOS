@@ -1,5 +1,4 @@
 """Policy engine: command chaining, hard denies, and subject scoping."""
-import json
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -44,7 +43,8 @@ class CommandlessExecToolPolicyTests(unittest.TestCase):
         for name in ("run_tests", "syntax_check", "lint", "format_file"):
             with self.subTest(tool=name):
                 spec = argusd.toolreg.REGISTRY[name]
-                decision, _ = argusd.policy_decision(self.policy, spec, None, {"path": "a.py"})
+                decision, _ = argusd.policy_decision(self.policy, spec, None, {"pat"
+                    "h": "a.py"})
                 self.assertEqual("auto", decision)
 
     def test_a_saved_deny_rule_still_wins(self):
@@ -56,7 +56,8 @@ class CommandlessExecToolPolicyTests(unittest.TestCase):
         self.policy.remember("commandless-exec-policy-test-deny-me", allow=False)
         spec = argusd.toolreg.REGISTRY["run_tests"]
         decision, _ = argusd.policy_decision(self.policy, spec, None,
-                                             {"path": "commandless-exec-policy-test-deny-me"})
+                                             {"path": "commandless-exec-policy-test-den"
+                                                 "y-me"})
         self.assertEqual("deny", decision)
 
     def test_run_command_is_unaffected(self):
@@ -64,7 +65,8 @@ class CommandlessExecToolPolicyTests(unittest.TestCase):
         all — run_command has one, so it still goes through the normal $SAFE
         check on the actual command text."""
         spec = argusd.toolreg.REGISTRY["run_command"]
-        decision, _ = argusd.policy_decision(self.policy, spec, None, {"command": "rm -rf /tmp/x"})
+        decision, _ = argusd.policy_decision(self.policy, spec, None, {"command": "rm "
+            "-rf /tmp/x"})
         self.assertEqual("prompt", decision)
 
 
@@ -94,7 +96,8 @@ class McpGrantPolicyTests(unittest.TestCase):
 
     def test_a_saved_allow_rule_for_that_server_tool_flows_auto(self):
         self.policy.remember("fs.mcp-policy-test-allow-me", allow=True)
-        decision, _ = argusd.policy_decision(self.policy, self._spec("mcp-policy-test-allow-me"),
+        decision, _ = argusd.policy_decision(self.policy, self._spec("mcp-policy-test-a"
+            "llow-me"),
                                              None, {})
         self.assertEqual("auto", decision)
 
@@ -106,7 +109,8 @@ class McpGrantPolicyTests(unittest.TestCase):
 
     def test_a_saved_deny_rule_wins_over_everything(self):
         self.policy.remember("fs.mcp-policy-test-deny-me", allow=False)
-        decision, _ = argusd.policy_decision(self.policy, self._spec("mcp-policy-test-deny-me"),
+        decision, _ = argusd.policy_decision(self.policy, self._spec("mcp-policy-test-d"
+            "eny-me"),
                                              None, {})
         self.assertEqual("deny", decision)
 
@@ -161,7 +165,8 @@ class CommandChainingTests(unittest.TestCase):
         for cmd in ("FOO=$(rm -rf /tmp/x) python3 -m pytest -q",
                     "FOO='a; rm -rf /tmp/x' python3 -m pytest -q",
                     "FOO=a&&rm -rf /tmp/x python3 -m pytest -q",
-                    "EXPENSES_DATA_FILE=/tmp/t.json python3 expenses.py add 8 transport"):
+                    "EXPENSES_DATA_FILE=/tmp/t.json python3 expenses.py add 8 "
+                        "transport"):
             with self.subTest(cmd=cmd):
                 self.assertFalse(segments_safe(cmd))
                 self.assertEqual("prompt", self.decision(cmd))
@@ -203,7 +208,8 @@ class CommandChainingTests(unittest.TestCase):
                 self.assertEqual("deny", self.decision(cmd))
 
     def test_net_requests_prompt(self):
-        self.assertEqual("prompt", self.policy.classify("net", command="curl example.com")[0])
+        self.assertEqual("prompt", self.policy.classify("net", command="curl "
+            "example.com")[0])
 
     def test_saved_rule_is_exact_not_a_wildcard(self):
         self.assertEqual("prompt", self.decision("touch /tmp/thing"))
@@ -235,7 +241,8 @@ class SubjectScopingTests(unittest.TestCase):
         inside = str(self.ws.root / "a.py")
         for tool, args in (("read_file", {"path": inside}),
                            ("write_file", {"path": inside, "content": "x"}),
-                           ("edit_file", {"path": inside, "old_string": "a", "new_string": "b"}),
+                           ("edit_file", {"path": inside, "old_strin"
+                               "g": "a", "new_string": "b"}),
                            ("glob", {"pattern": "**/*.py"}),
                            ("grep", {"pattern": "x"}),
                            ("list_dir", {})):
@@ -245,7 +252,8 @@ class SubjectScopingTests(unittest.TestCase):
     def test_paths_outside_the_workspace_prompt(self):
         for tool, args in (("read_file", {"path": "/etc/passwd"}),
                            ("write_file", {"path": "/etc/pwn", "content": "x"}),
-                           ("edit_file", {"path": "../up.py", "old_string": "a", "new_string": "b"})):
+                           ("edit_file", {"path": "../up.py", "old_strin"
+                               "g": "a", "new_string": "b"})):
             with self.subTest(tool=tool):
                 self.assertEqual("prompt", self.decision(tool, args)[0])
 
@@ -253,9 +261,12 @@ class SubjectScopingTests(unittest.TestCase):
         """move_file's paths are src/dst — not `path` — and used to be
         classified with no subject at all, i.e. auto-approved unchecked."""
         inside = str(self.ws.root / "a.py")
-        self.assertEqual("auto", self.decision("move_file", {"src": inside, "dst": inside + "2"})[0])
-        self.assertEqual("prompt", self.decision("move_file", {"src": inside, "dst": "/tmp/pwn"})[0])
-        self.assertEqual("prompt", self.decision("move_file", {"src": "/etc/passwd", "dst": inside})[0])
+        self.assertEqual("auto", self.decision("move_fil"
+            "e", {"src": inside, "dst": inside + "2"})[0])
+        self.assertEqual("prompt", self.decision("move_fil"
+            "e", {"src": inside, "dst": "/tmp/pwn"})[0])
+        self.assertEqual("prompt", self.decision("move_file", {"src": "/etc/passw"
+            "d", "dst": inside})[0])
 
     def test_a_path_scoped_tool_with_no_path_fails_closed(self):
         decision, reason = self.decision("write_file", {"content": "x"})
@@ -265,7 +276,8 @@ class SubjectScopingTests(unittest.TestCase):
     def test_checkpoint_restore_judges_the_restored_path(self):
         """An unknown checkpoint id yields no subject, which is refused rather
         than treated as inside the workspace."""
-        self.assertEqual("prompt", self.decision("checkpoint_restore", {"id": "c-nope"})[0])
+        self.assertEqual("prompt", self.decision("checkpoint_restor"
+            "e", {"id": "c-nope"})[0])
 
     def test_restoring_a_real_checkpoint_is_still_automatic(self):
         target = support.write(self.ws.root / "a.py", "x = 1\n")
@@ -273,18 +285,22 @@ class SubjectScopingTests(unittest.TestCase):
         self.assertEqual("auto", self.decision("checkpoint_restore", {"id": cid})[0])
 
     def test_non_path_tools_are_not_judged_as_paths(self):
-        for tool, args in (("todo_write", {"todos": [{"content": "x", "status": "pending"}]}),
+        for tool, args in (("todo_writ"
+            "e", {"todos": [{"content": "x", "status": "pending"}]}),
                            ("checkpoint_list", {})):
             with self.subTest(tool=tool):
                 self.assertEqual("auto", self.decision(tool, args)[0])
 
     def test_run_command_net_escalates_but_never_downgrades(self):
         self.assertEqual("auto", self.decision("run_command", {"command": "ls"})[0])
-        self.assertEqual("prompt", self.decision("run_command", {"command": "ls", "net": True})[0])
-        self.assertEqual("deny", self.decision("run_command", {"command": "sudo ls", "net": True})[0])
+        self.assertEqual("prompt", self.decision("run_comman"
+            "d", {"command": "ls", "net": True})[0])
+        self.assertEqual("deny", self.decision("run_comman"
+            "d", {"command": "sudo ls", "net": True})[0])
 
     def test_commit_tier_input_actions_still_prompt(self):
-        for tool, args in (("type_text", {"text": "hi"}), ("key_press", {"key": "Return"})):
+        for tool, args in (("type_tex"
+            "t", {"text": "hi"}), ("key_press", {"key": "Return"})):
             with self.subTest(tool=tool):
                 self.assertEqual("prompt", self.decision(tool, args)[0])
 
@@ -296,7 +312,8 @@ class HomeDirectoryPolicyTests(unittest.TestCase):
     WorkspaceHomeAccessTests in test_workspace_and_checkpoints.py."""
 
     def setUp(self):
-        self.fake_home = support.make_workspace("policy-fake-home-" + self._testMethodName)
+        self.fake_home = support.make_workspace("policy-fake-home"
+            "-" + self._testMethodName)
         patch = mock.patch.object(Path, "home", return_value=self.fake_home)
         patch.start()
         self.addCleanup(patch.stop)
@@ -304,8 +321,10 @@ class HomeDirectoryPolicyTests(unittest.TestCase):
         self.root.mkdir(parents=True, exist_ok=True)
         self.ws = Workspace(self.root)
         self.policy = Policy(self.ws.root)
-        self.ctx = argusd.Context(argusd.connect(), "policy-home-" + self._testMethodName,
-                                  self.ws, self.policy, Checkpoints("policy-home"), argusd.grants())
+        self.ctx = argusd.Context(argusd.connect(), "policy-home"
+            "-" + self._testMethodName,
+                                  self.ws, self.policy, Checkpoints("policy-hom"
+                                      "e"), argusd.grants())
 
     def decision(self, tool, args):
         spec_doc = dict(argusd.toolreg.REGISTRY[tool])
@@ -318,7 +337,8 @@ class HomeDirectoryPolicyTests(unittest.TestCase):
                          {"path": elsewhere, "content": "x"})[0])
 
     def test_a_path_outside_home_entirely_still_prompts(self):
-        self.assertEqual("prompt", self.decision("read_file", {"path": "/etc/passwd"})[0])
+        self.assertEqual("prompt", self.decision("read_file", {"path": "/etc/passw"
+            "d"})[0])
         self.assertEqual("prompt", self.decision("read_file",
                          {"path": str(support.TMP / "outside-everything.txt")})[0])
 

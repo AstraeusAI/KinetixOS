@@ -12,6 +12,7 @@ cache their own discovered tool list there, so a task's context() build can
 know what tools exist without spawning every enabled server just to find
 out — only a tool that actually gets called pays the spawn/handshake cost.
 """
+
 import json
 import os
 import queue
@@ -35,6 +36,7 @@ CALL_TIMEOUT = 60
 
 
 # ── config ───────────────────────────────────────────────────────────────
+
 
 def load_config():
     """A missing or corrupt file behaves like an empty config — fail-soft,
@@ -73,6 +75,7 @@ def tool_full_name(server, tool):
 
 
 # ── protocol client ──────────────────────────────────────────────────────
+
 
 class MCPError(RuntimeError):
     pass
@@ -141,7 +144,9 @@ class MCPClient:
     def request(self, method, params=None):
         rid = self.next_id
         self.next_id += 1
-        self._send({"jsonrpc": "2.0", "id": rid, "method": method, "params": params or {}})
+        self._send(
+            {"jsonrpc": "2.0", "id": rid, "method": method, "params": params or {}}
+        )
         return rid
 
     def notify(self, method, params=None):
@@ -164,8 +169,12 @@ class MCPClient:
         env.update(self.extra_env)
         try:
             self.proc = subprocess.Popen(
-                [self.command, *self.args], stdin=subprocess.PIPE,
-                stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
+                [self.command, *self.args],
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                env=env,
+            )
         except FileNotFoundError:
             raise MCPError(f"command not found: {self.command}")
         except OSError as e:
@@ -173,20 +182,27 @@ class MCPClient:
         self._reader = threading.Thread(target=self._read_loop, daemon=True)
         self._reader.start()
         threading.Thread(target=self._read_stderr, daemon=True).start()
-        rid = self.request("initialize", {
-            "protocolVersion": PROTOCOL_VERSION,
-            "capabilities": {},
-            "clientInfo": {"name": "argus", "version": "1"},
-        })
+        rid = self.request(
+            "initialize",
+            {
+                "protocolVersion": PROTOCOL_VERSION,
+                "capabilities": {},
+                "clientInfo": {"name": "argus", "version": "1"},
+            },
+        )
         timeout = init_timeout if init_timeout is not None else INIT_TIMEOUT
         resp = self.wait_for(lambda m: m.get("id") == rid, timeout=timeout)
         if resp is None:
             self._force_kill()
             detail = (" — " + self.stderr_tail[-1]) if self.stderr_tail else ""
-            raise MCPError(f"MCP server did not answer initialize within {timeout}s{detail}")
+            raise MCPError(
+                f"MCP server did not answer initialize within {timeout}s{detail}"
+            )
         if resp.get("error"):
             self._force_kill()
-            raise MCPError("MCP server rejected initialize: " + str(resp["error"])[:200])
+            raise MCPError(
+                "MCP server rejected initialize: " + str(resp["error"])[:200]
+            )
         self.notify("notifications/initialized")
 
     def list_tools(self):
@@ -200,8 +216,10 @@ class MCPClient:
 
     def call_tool(self, name, arguments, timeout=None):
         rid = self.request("tools/call", {"name": name, "arguments": arguments or {}})
-        resp = self.wait_for(lambda m: m.get("id") == rid,
-                             timeout=timeout if timeout is not None else CALL_TIMEOUT)
+        resp = self.wait_for(
+            lambda m: m.get("id") == rid,
+            timeout=timeout if timeout is not None else CALL_TIMEOUT,
+        )
         if resp is None:
             return {"ok": False, "error": f"{name} timed out"}
         if resp.get("error"):
@@ -215,7 +233,9 @@ class MCPClient:
                 other += 1
         out = {"ok": not result.get("isError", False), "content": "\n".join(texts)}
         if other:
-            out["note"] = f"response included {other} non-text content block(s), not shown"
+            out["note"] = (
+                f"response included {other} non-text content block(s), not shown"
+            )
         return out
 
     def _force_kill(self):
@@ -226,7 +246,8 @@ class MCPClient:
             pass
         for stream in (self.proc.stdin, self.proc.stdout, self.proc.stderr):
             try:
-                if stream: stream.close()
+                if stream:
+                    stream.close()
             except Exception:
                 pass
 
@@ -244,7 +265,8 @@ class MCPClient:
                 pass
         for stream in (self.proc.stdin, self.proc.stdout, self.proc.stderr):
             try:
-                if stream: stream.close()
+                if stream:
+                    stream.close()
             except Exception:
                 pass
 
@@ -284,11 +306,20 @@ def probe_server(name, timeout=None):
     entry = doc["servers"].get(name)
     if entry is None:
         return {"ok": False, "error": f"no server named {name!r} in {CONFIG_FILE}"}
-    result = probe(entry.get("command", ""), entry.get("args"), entry.get("env"), timeout)
-    entry["lastProbe"] = {"ok": result["ok"], "ts": int(time.time() * 1000),
-                          "error": result.get("error")}
+    result = probe(
+        entry.get("command", ""), entry.get("args"), entry.get("env"), timeout
+    )
+    entry["lastProbe"] = {
+        "ok": result["ok"],
+        "ts": int(time.time() * 1000),
+        "error": result.get("error"),
+    }
     if result["ok"]:
         entry["tools"] = result["tools"]
     save_config(doc)
-    return {"ok": result["ok"], "name": name, "tools": entry.get("tools", []),
-            "error": result.get("error")}
+    return {
+        "ok": result["ok"],
+        "name": name,
+        "tools": entry.get("tools", []),
+        "error": result.get("error"),
+    }

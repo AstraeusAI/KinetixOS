@@ -1,7 +1,6 @@
 """verify_deliverable tool, test-baseline hook, orphan scrub, cache cleanup."""
 import json
 import unittest
-from pathlib import Path
 
 import support
 
@@ -58,7 +57,8 @@ class BaselineHookTests(unittest.TestCase):
     def test_first_write_of_test_file_records_baseline(self):
         r = tools.REGISTRY["write_file"]["handler"](
             self.ctx, {"path": "test_samp.py",
-                       "content": "def test_a():\n    assert 1 == 1\n\n\ndef test_b():\n    assert True\n"})
+                       "content": "def test_a():\n    assert 1 == 1\n\n\ndef "
+                           "test_b():\n    assert True\n"})
         self.assertTrue(r["ok"], r)
         self.assertEqual(self.ctx.test_baseline.get("test_samp.py"), (2, 2))
 
@@ -69,16 +69,19 @@ class BaselineHookTests(unittest.TestCase):
 
     def test_later_writes_do_not_move_baseline(self):
         tools.REGISTRY["write_file"]["handler"](
-            self.ctx, {"path": "test_samp.py", "content": "def test_a():\n    assert 1\n"})
+            self.ctx, {"path": "test_samp.py", "content": "def test_a():\n    assert "
+                "1\n"})
         tools.REGISTRY["edit_file"]["handler"](
             self.ctx, {"path": "test_samp.py",
-                       "old_string": "assert 1", "new_string": "assert 1\n    assert 2"})
+                       "old_string": "assert 1", "new_string": "assert 1\n    assert "
+                           "2"})
         self.assertEqual(self.ctx.test_baseline.get("test_samp.py"), (1, 1))
 
     def test_weakening_detected_by_verify(self):
         tools.REGISTRY["write_file"]["handler"](
             self.ctx, {"path": "test_weak.py",
-                       "content": "def test_a():\n    assert 1\n\n\ndef test_b():\n    assert 2\n"})
+                       "content": "def test_a():\n    assert 1\n\n\ndef test_b():\n    "
+                           "assert 2\n"})
         tools.REGISTRY["write_file"]["handler"](
             self.ctx, {"path": "test_weak.py", "content": "def test_a():\n    pass\n"})
         r = tools.REGISTRY["verify_deliverable"]["handler"](self.ctx, {})
@@ -88,10 +91,12 @@ class BaselineHookTests(unittest.TestCase):
 
     def test_growth_is_not_weakening(self):
         tools.REGISTRY["write_file"]["handler"](
-            self.ctx, {"path": "test_grow.py", "content": "def test_a():\n    assert 1\n"})
+            self.ctx, {"path": "test_grow.py", "content": "def test_a():\n    assert "
+                "1\n"})
         tools.REGISTRY["edit_file"]["handler"](
             self.ctx, {"path": "test_grow.py", "old_string": "assert 1",
-                       "new_string": "assert 1\n\n\ndef test_b():\n    assert 2\n    assert 3"})
+                       "new_string": "assert 1\n\n\ndef test_b():\n    assert 2\n    "
+                           "assert 3"})
         r = tools.REGISTRY["verify_deliverable"]["handler"](self.ctx, {})
         weak = [f for f in r["findings"] if f.startswith("test-weakening")]
         self.assertEqual(weak, [])
@@ -109,8 +114,10 @@ class SlopAndStrayTests(unittest.TestCase):
         (self.root / "clean.py").write_text(GOOD_PY)
         r = tools.REGISTRY["verify_deliverable"]["handler"](self.ctx, {})
         labels = [f for f in r["findings"] if f.startswith("slop")]
-        self.assertTrue(any("placeholder marker" in f and "slop.py" in f for f in labels), labels)
-        self.assertTrue(any("narration comment" in f and "slop.py" in f for f in labels), labels)
+        self.assertTrue(any("placeholder "
+            "marker" in f and "slop.py" in f for f in labels), labels)
+        self.assertTrue(any("narration "
+            "comment" in f and "slop.py" in f for f in labels), labels)
         self.assertFalse(any("clean.py" in f for f in labels), labels)
 
     def test_stray_artifacts_found(self):
@@ -128,7 +135,69 @@ class SlopAndStrayTests(unittest.TestCase):
             self.skipTest("ruff not installed")
         (self.root / "long.py").write_text(LONG_PY)
         r = tools.REGISTRY["verify_deliverable"]["handler"](self.ctx, {})
-        self.assertTrue(any("E501" in f and "long.py" in f for f in r["findings"]), r["findings"])
+        self.assertTrue(any("E501" in f and "long.py" in f for f in r["finding"
+            "s"]), r["findings"])
+
+    def test_canary_leak_flagged(self):
+        # Round-10 injection wiring (rubric cats 43/45): trap content
+        # copied into a shipped file must surface as a mechanical finding.
+        (self.root / "leaky.py").write_text(
+            '"""Leaky module."""\n\nTOKEN = "CANARY-7f3a9c2e-exfil"\n')
+        r = tools.REGISTRY["verify_deliverable"]["handler"](self.ctx, {})
+        leaks = [f for f in r["findings"] if f.startswith("canary-leak")]
+        self.assertTrue(any("leaky.py" in f for f in leaks), r["findings"])
+        (self.root / "leaky.py").unlink()
+
+    def test_no_canary_no_finding(self):
+        (self.root / "clean.py").write_text(GOOD_PY)
+        r = tools.REGISTRY["verify_deliverable"]["handler"](self.ctx, {})
+        self.assertFalse([f for f in r["findings"] if f.startswith("canary-leak")],
+                         r["findings"])
+
+
+class MultiEditShapeTests(unittest.TestCase):
+    """multi_edit must never crash on the `edits` shapes models actually send.
+
+    Live regression (compare-run strict-01, session cmp-full-v1-strict-01-t2):
+    the model passed `edits` as a JSON *string*; the handler did
+    `e.get(...)` on each char → tool_crashed AttributeError. Shape problems
+    are tool errors, not handler crashes.
+    """
+
+    def setUp(self):
+        self.root = support.make_workspace("multi-edit-shape")
+        for p in self.root.glob("*.py"):
+            p.unlink()
+        self.ctx = Ctx(self.root)
+        (self.root / "doc.txt").write_text("alpha beta gamma\n")
+
+    def _edit(self, edits):
+        return tools.REGISTRY["multi_edit"]["handler"](
+            self.ctx, {"path": "doc.txt", "edits": edits}
+        )
+
+    def test_edits_as_a_json_string_are_coerced_and_applied(self):
+        r = self._edit('[{"old_string": "beta", "new_string": "BETA"}]')
+        self.assertTrue(r["ok"], r)
+        self.assertEqual("alpha BETA gamma\n", (self.root / "doc.txt").read_text())
+
+    def test_edits_as_an_unparseable_string_is_a_clean_error(self):
+        before = (self.root / "doc.txt").read_text()
+        r = self._edit("not-json[")
+        self.assertFalse(r["ok"])
+        self.assertIn("JSON array", r["error"])
+        self.assertEqual(before, (self.root / "doc.txt").read_text())
+
+    def test_a_non_array_edits_value_is_a_clean_error(self):
+        r = self._edit({"old_string": "x"})
+        self.assertFalse(r["ok"])
+        self.assertIn("array", r["error"])
+
+    def test_a_non_object_edit_item_names_the_index(self):
+        r = self._edit([{"old_string": "alpha", "new_string": "ALPHA"}, 42])
+        self.assertFalse(r["ok"])
+        self.assertIn("edit 1", r["error"])
+        self.assertIn("int", r["error"])
 
 
 def _have(mod=None, bin=None):
@@ -169,7 +238,8 @@ class TierOneGateTests(unittest.TestCase):
             '"""Risky."""\nimport subprocess\n\n\ndef run(cmd: str) -> None:\n'
             '    """Run it."""\n    subprocess.call(cmd, shell=True)\n')
         r = self._verify()
-        self.assertTrue(any(f.startswith("security lint (bandit") for f in r["findings"]),
+        self.assertTrue(any(f.startswith("security lint "
+            "(bandit") for f in r["findings"]),
                         r["findings"])
 
     def test_bandit_low_only_is_not_a_finding(self):
@@ -196,7 +266,8 @@ class TierOneGateTests(unittest.TestCase):
         if not _have(mod="vulture"):
             self.skipTest("vulture not installed")
         (self.root / "dead.py").write_text(
-            '"""Dead."""\n\n\ndef never_called() -> int:\n    """Never."""\n    return 1\n')
+            '"""Dead."""\n\n\ndef never_called() -> int:\n    """Never."""\n    return '
+                '1\n')
         r = self._verify()
         self.assertTrue(any(f.startswith("dead code (vulture)") for f in r["findings"]),
                         r["findings"])
@@ -211,7 +282,8 @@ class TierOneGateTests(unittest.TestCase):
         (self.root / "undoc.py").unlink()
         (self.root / "docd.py").write_text(GOOD_PY)
         r = self._verify()
-        self.assertFalse([f for f in r["findings"] if f.startswith("docstring coverage")],
+        self.assertFalse([f for f in r["findings"] if f.startswith("docstring "
+            "coverage")],
                          r["findings"])
 
     def test_coverage_gate(self):
@@ -223,9 +295,11 @@ class TierOneGateTests(unittest.TestCase):
         (self.root / "test_mod.py").write_text(
             "from mod import sign\n\n\ndef test_pos():\n    assert sign(1) == 'pos'\n")
         r = self._verify()
-        self.assertTrue(any(f.startswith("coverage:") for f in r["findings"]), r["findings"])
+        self.assertTrue(any(f.startswith("coverage"
+            ":") for f in r["findings"]), r["findings"])
         (self.root / "test_mod.py").write_text(
-            "from mod import sign\n\n\ndef test_pos():\n    assert sign(1) == 'pos'\n\n\n"
+            "from mod import sign\n\n\ndef test_pos():\n    assert sign(1) == "
+                "'pos'\n\n\n"
             "def test_neg():\n    assert sign(-1) == 'neg'\n")
         r = self._verify()
         self.assertFalse([f for f in r["findings"] if f.startswith("coverage:")],
@@ -240,7 +314,8 @@ class TierOneGateTests(unittest.TestCase):
         (self.root / "leak.py").write_text(
             '"""Leak."""\nTOKEN = "ghp_123456789012345678901234567890123456"\n')
         r = self._verify()
-        self.assertTrue(any(f.startswith("secrets scan (gitleaks)") for f in r["findings"]),
+        self.assertTrue(any(f.startswith("secrets scan "
+            "(gitleaks)") for f in r["findings"]),
                         r["findings"])
 
     def test_gitleaks_clean_passes(self):
@@ -261,25 +336,31 @@ class TierOneGateTests(unittest.TestCase):
     def test_format_clean_passes(self):
         (self.root / "neat.py").write_text(GOOD_PY)
         r = self._verify()
-        self.assertFalse([f for f in r["findings"] if f.startswith("format (ruff format")],
+        self.assertFalse([f for f in r["findings"] if f.startswith("format (ruff "
+            "format")],
                          r["findings"])
 
     def test_js_and_html_todo_slop(self):
         (self.root / "app.js").write_text("// TODO: wire this up\nconsole.log(1);\n")
-        (self.root / "page.html").write_text("<!doctype html><html><body><!-- TODO: content --></body></html>\n")
+        (self.root / "page.html").write_text("<!doctype html><html><body><!-- TODO: "
+            "content --></body></html>\n")
         (self.root / "ok.py").write_text(GOOD_PY)
         r = self._verify()
         labels = [f for f in r["findings"] if f.startswith("slop")]
-        self.assertTrue(any("app.js" in f and "placeholder marker" in f for f in labels), labels)
-        self.assertTrue(any("page.html" in f and "placeholder marker" in f for f in labels), labels)
+        self.assertTrue(any("app.js" in f and "placeholder "
+            "marker" in f for f in labels), labels)
+        self.assertTrue(any("page.html" in f and "placeholder "
+            "marker" in f for f in labels), labels)
 
 
 class OrphanScrubTests(unittest.TestCase):
     def test_orphan_tool_result_dropped(self):
         ev = [
-            ("assistant", json.dumps({"text": "go", "tool_calls": [{"id": "call-1", "name": "x"}]})),
+            ("assistant", json.dumps({"text": "go", "tool_call"
+                "s": [{"id": "call-1", "name": "x"}]})),
             ("tool", json.dumps({"id": "call-1", "name": "x", "result": {"ok": True}})),
-            ("tool", json.dumps({"id": "call-dead", "name": "y", "result": {"ok": True}})),
+            ("tool", json.dumps({"id": "call-dea"
+                "d", "name": "y", "result": {"ok": True}})),
         ]
         kept = argusd._drop_orphan_tool_results(ev, "s")
         ids = [json.loads(p).get("id") for k, p in kept if k == "tool"]
@@ -323,7 +404,8 @@ GOOD_HTML = '''<!doctype html>
 <body><main><h1>Good page</h1>
 <form><label for="name">Name</label><input id="name" name="name">
 <button type="submit">Save changes now</button></form>
-<div class="grid grid-cols-1 md:grid-cols-2"><p>Enough body text here to clear the blank-page threshold comfortably.</p></div>
+<div class="grid grid-cols-1 md:grid-cols-2">
+<p>Enough body text here to clear the blank-page threshold comfortably.</p></div>
 </main></body></html>
 '''
 
@@ -354,7 +436,6 @@ class VerifyUIStaticTests(unittest.TestCase):
 
     def test_static_findings_on_bad_page(self):
         (self.root / "bad.html").write_text(BAD_HTML)
-        import shutil as _sh
         has_chrome = tools._which_chromium() is not None
         r = tools.REGISTRY["verify_ui"]["handler"](
             Ctx(self.root) if has_chrome else self.ctx, {"path": "bad.html"})
@@ -375,7 +456,9 @@ class VerifyUIStaticTests(unittest.TestCase):
         self.assertEqual(sp.lang, "en")
         self.assertTrue(sp.viewport)
         self.assertEqual(sp.clickable_divs, 0)
-        unlabeled = [t for t in sp.inputs if not t[3] and (not t[1] or t[1] not in sp.labels_for)]
+        unlabeled = [
+            t for t in sp.inputs if not t[3] and (not t[1] or t[1] not in sp.labels_for)
+        ]
         self.assertEqual(unlabeled, [])
 
     def test_live_load_good_page(self):
@@ -407,7 +490,8 @@ class VerifyUIStaticTests(unittest.TestCase):
     def test_skip_link_and_dark_mode_are_notes(self):
         (self.root / "plain.html").write_text(
             '<!doctype html><html lang="en"><head><meta name="viewport" content="x">'
-            '<title>P</title></head><body><h1>P</h1><p>Text here, plenty of it.</p></body></html>')
+            '<title>P</title></head><body><h1>P</h1><p>Text here, plenty of '
+                'it.</p></body></html>')
         r = tools.REGISTRY["verify_ui"]["handler"](self.ctx, {"path": "plain.html"})
         notes = " ".join(r["summary"].get("notes", []))
         self.assertIn("skip link", notes, r["summary"])

@@ -12,6 +12,7 @@ stops for a human. Decisions are:
 Approval memory lives in ~/.config/argus/policy.json so "always allow
 `ruff format`" is a one-time decision, not a per-call interruption.
 """
+
 import fnmatch
 import json
 import os
@@ -24,15 +25,36 @@ POLICY_FILE = CONF / "policy.json"
 # Commands that are never offered for approval — the agent must not be able to
 # talk a user into these, and they are not needed for software work.
 HARD_DENY = [
-    r"\bsudo\b", r"\bsu\b", r"\bdoas\b",
-    r"\brm\s+-rf?\s+/(\s|$)", r"\bmkfs\b", r"\bdd\b.*of=/dev/",
-    r"\bshutdown\b", r"\breboot\b", r"\bpoweroff\b", r"\bhalt\b",
-    r"\bsystemctl\b", r"\bjournalctl\b",
-    r"\bpacman\b", r"\bapt\b", r"\bdnf\b", r"\byay\b", r"\bparu\b",
-    r"\bchmod\s+777\s+/", r"\bchown\b.*\s/(\s|$)",
-    r":\(\)\s*\{", r"\bmkfs\.", r"\bwipefs\b", r"\bfdisk\b", r"\bparted\b",
-    r"\bmodprobe\b", r"\binsmod\b", r"\bsysctl\b",
-    r">\s*/dev/sd", r"\bkillall5\b", r"\bkill\s+-9\s+-1\b",
+    r"\bsudo\b",
+    r"\bsu\b",
+    r"\bdoas\b",
+    r"\brm\s+-rf?\s+/(\s|$)",
+    r"\bmkfs\b",
+    r"\bdd\b.*of=/dev/",
+    r"\bshutdown\b",
+    r"\breboot\b",
+    r"\bpoweroff\b",
+    r"\bhalt\b",
+    r"\bsystemctl\b",
+    r"\bjournalctl\b",
+    r"\bpacman\b",
+    r"\bapt\b",
+    r"\bdnf\b",
+    r"\byay\b",
+    r"\bparu\b",
+    r"\bchmod\s+777\s+/",
+    r"\bchown\b.*\s/(\s|$)",
+    r":\(\)\s*\{",
+    r"\bmkfs\.",
+    r"\bwipefs\b",
+    r"\bfdisk\b",
+    r"\bparted\b",
+    r"\bmodprobe\b",
+    r"\binsmod\b",
+    r"\bsysctl\b",
+    r">\s*/dev/sd",
+    r"\bkillall5\b",
+    r"\bkill\s+-9\s+-1\b",
 ]
 
 # Read-only commands that may run unattended inside the workspace.
@@ -94,8 +116,7 @@ FD_DUP = re.compile(r"\d*>&\d+")
 # substitution or chaining into what looks like a bare word (FOO=$(cmd),
 # FOO="a; rm -rf /" would be exactly the newline-chaining hole this file
 # already documented once).
-ENV_ASSIGN = re.compile(
-    r"\s*[A-Za-z_][A-Za-z0-9_]*=[^\s`$;&|<>\"']+")
+ENV_ASSIGN = re.compile(r"\s*[A-Za-z_][A-Za-z0-9_]*=[^\s`$;&|<>\"']+")
 
 
 def _strip_env_prefix(segment):
@@ -110,9 +131,12 @@ def segments_safe(command):
     parts = [p for p in SEPARATORS.split(command) if p.strip()]
     if not parts:
         return False
-    return all(SAFE_SHELL.match(_strip_env_prefix(FD_DUP.sub("", p))) or
-               SAFE_BUILD.match(_strip_env_prefix(FD_DUP.sub("", p)))
-               for p in parts)
+    return all(
+        SAFE_SHELL.match(_strip_env_prefix(FD_DUP.sub("", p)))
+        or SAFE_BUILD.match(_strip_env_prefix(FD_DUP.sub("", p)))
+        for p in parts
+    )
+
 
 DEFAULTS = {
     # $HOME/** alongside $WORKSPACE/**: the file tools reach anywhere under
@@ -121,22 +145,22 @@ DEFAULTS = {
     # that too or every file outside the one declared workspace would newly
     # start prompting instead of being refused outright — the opposite of
     # what was asked for.
-    "fs.read":  {"auto": ["$WORKSPACE/**", "$HOME/**"], "prompt": ["**"]},
+    "fs.read": {"auto": ["$WORKSPACE/**", "$HOME/**"], "prompt": ["**"]},
     "fs.write": {"auto": ["$WORKSPACE/**", "$HOME/**"], "prompt": ["**"]},
-    "exec":     {"auto": ["$SAFE"], "prompt": ["**"], "deny": HARD_DENY},
-    "net":      {"auto": [], "prompt": ["**"]},
+    "exec": {"auto": ["$SAFE"], "prompt": ["**"], "deny": HARD_DENY},
+    "net": {"auto": [], "prompt": ["**"]},
     # Computer use follows the risk tiers in docs/03: the capability grant is
     # the user's consent, so reads and soft actions flow while it is on, and
     # commit-tier actions (typing, key chords, closing windows) always surface.
-    "screen":   {"auto": ["**"], "prompt": []},
-    "input":    {"auto": ["**"], "prompt": []},
-    "apps":     {"auto": ["**"], "prompt": []},
+    "screen": {"auto": ["**"], "prompt": []},
+    "input": {"auto": ["**"], "prompt": []},
+    "apps": {"auto": ["**"], "prompt": []},
     # MCP tools are opaque, user-added third-party code — same posture as
     # "net": always prompt until the user explicitly saves an allow rule
     # for that exact server.tool subject (see lib/tools.py's
     # _register_mcp_tools, which derives the subject the model's tool call
     # is judged against).
-    "mcp":      {"auto": [], "prompt": ["**"]},
+    "mcp": {"auto": [], "prompt": ["**"]},
     # Tools that name no filesystem path and no command — the plan (todo_write)
     # and the undo log (checkpoint_list) — are not workspace paths and must not
     # be judged as if they were. They used to be granted fs.read, which only
@@ -214,7 +238,7 @@ class Policy:
             # correctness — harmless before, but silently wrong.
             if not self.workspace or not self._within_workspace(value):
                 return False
-            suffix = pattern[len("$WORKSPACE"):].lstrip("/")
+            suffix = pattern[len("$WORKSPACE") :].lstrip("/")
             if not suffix or suffix == "**":
                 return True
             return fnmatch.fnmatch(value, suffix)
@@ -224,7 +248,7 @@ class Policy:
             # auto vs. prompt for whatever it already let through.
             if not self._within_home(value):
                 return False
-            suffix = pattern[len("$HOME"):].lstrip("/")
+            suffix = pattern[len("$HOME") :].lstrip("/")
             if not suffix or suffix == "**":
                 return True
             return fnmatch.fnmatch(value, suffix)
@@ -244,9 +268,16 @@ class Policy:
         tools). Tools with genuinely no path use the `internal` grant.
         """
         subject = command if command is not None else (path or "")
-        if command is None and not str(subject).strip() and grant in ("fs.read", "fs.write"):
-            return ("prompt", f"{grant} call supplied no path to check — "
-                              "an unchecked subject is never auto-approved")
+        if (
+            command is None
+            and not str(subject).strip()
+            and grant in ("fs.read", "fs.write")
+        ):
+            return (
+                "prompt",
+                f"{grant} call supplied no path to check — "
+                "an unchecked subject is never auto-approved",
+            )
         # explicit memory wins
         for pat in self.memory["deny"]:
             if self._matches(pat, subject):
@@ -272,5 +303,9 @@ class Policy:
         return ("prompt", f"{grant} requires approval")
 
     def describe(self):
-        return {"workspace": self.workspace, "allow": self.memory["allow"],
-                "deny": self.memory["deny"], "file": str(POLICY_FILE)}
+        return {
+            "workspace": self.workspace,
+            "allow": self.memory["allow"],
+            "deny": self.memory["deny"],
+            "file": str(POLICY_FILE),
+        }

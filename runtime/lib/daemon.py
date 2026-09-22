@@ -20,12 +20,30 @@ def request_argv(script, request):
     op = request.get("op")
     workspace = str(request.get("workspace") or Path.cwd())
     if op == "run":
-        return [sys.executable, "-u", str(script), "run", "--stream",
-                "--workspace", workspace, "--session", str(request.get("session") or "default"),
-                "--task", str(request.get("task") or "")]
+        return [
+            sys.executable,
+            "-u",
+            str(script),
+            "run",
+            "--stream",
+            "--workspace",
+            workspace,
+            "--session",
+            str(request.get("session") or "default"),
+            "--task",
+            str(request.get("task") or ""),
+        ]
     if op == "approve":
-        argv = [sys.executable, "-u", str(script), "approve", str(request.get("approval_id") or ""),
-                "--stream", "--workspace", workspace]
+        argv = [
+            sys.executable,
+            "-u",
+            str(script),
+            "approve",
+            str(request.get("approval_id") or ""),
+            "--stream",
+            "--workspace",
+            workspace,
+        ]
         if request.get("allow"):
             argv.append("--allow")
         if request.get("always"):
@@ -105,13 +123,25 @@ class Daemon:
                 send_json(conn, {"type": "daemon", "ok": True, "pid": os.getpid()})
                 return
             if request.get("op") == "cancel":
-                send_json(conn, {"type": "cancelled", "ok": self.cancel(request_id), "id": request_id})
+                send_json(
+                    conn,
+                    {
+                        "type": "cancelled",
+                        "ok": self.cancel(request_id),
+                        "id": request_id,
+                    },
+                )
                 return
             if not request_id:
                 raise ValueError("request id is required")
             argv = request_argv(self.script, request)
-            proc = subprocess.Popen(argv, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                                    env=request_env(request), start_new_session=True)
+            proc = subprocess.Popen(
+                argv,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                env=request_env(request),
+                start_new_session=True,
+            )
             with self.lock:
                 if request_id in self.active:
                     terminate_process(proc)
@@ -125,15 +155,23 @@ class Daemon:
             code = proc.wait()
             proc.stdout.close()
             if code and not self.stopping.is_set():
-                send_json(conn, {"type": "transport_error", "ok": False,
-                                 "text": f"Runtime worker exited with code {code}."})
+                send_json(
+                    conn,
+                    {
+                        "type": "transport_error",
+                        "ok": False,
+                        "text": f"Runtime worker exited with code {code}.",
+                    },
+                )
             send_json(conn, {"type": "transport_done", "code": code, "id": request_id})
         except (BrokenPipeError, ConnectionResetError):
             if proc:
                 terminate_process(proc)
         except Exception as exc:
             try:
-                send_json(conn, {"type": "transport_error", "ok": False, "text": str(exc)})
+                send_json(
+                    conn, {"type": "transport_error", "ok": False, "text": str(exc)}
+                )
             except OSError:
                 pass
         finally:

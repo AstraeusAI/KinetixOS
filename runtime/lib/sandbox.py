@@ -26,6 +26,7 @@ Design rule: **a sandbox that cannot be built is not silently skipped.**
 `sandbox_available()` is consulted by the policy layer; with no bwrap at all
 the caller must obtain explicit approval before running anything.
 """
+
 import os
 import resource
 import shutil
@@ -38,10 +39,10 @@ MEMORY_MAX = "2G"
 MEMORY_SWAP_MAX = "256M"
 TASKS_MAX = 256
 CPU_QUOTA = "200%"
-FSIZE_MAX = 512 * 1024 * 1024      # 512 MiB per file
+FSIZE_MAX = 512 * 1024 * 1024  # 512 MiB per file
 NOFILE_MAX = 1024
-CPU_SECONDS = 120                  # RLIMIT_CPU fallback
-AS_MAX = 6 * 1024 * 1024 * 1024    # 6 GiB address space (fallback only)
+CPU_SECONDS = 120  # RLIMIT_CPU fallback
+AS_MAX = 6 * 1024 * 1024 * 1024  # 6 GiB address space (fallback only)
 
 # Minimal synthetic root. $HOME (both the bind and the environment
 # variable) is set up dynamically in build_argv() below, not here — it has
@@ -57,21 +58,42 @@ AS_MAX = 6 * 1024 * 1024 * 1024    # 6 GiB address space (fallback only)
 # socket), /sys, /boot, /mnt, /media.
 BWRAP_BASE = [
     "--clearenv",
-    "--ro-bind", "/usr", "/usr",
-    "--ro-bind", "/etc", "/etc",
-    "--symlink", "usr/lib", "/lib",
-    "--symlink", "usr/lib64", "/lib64",
-    "--symlink", "usr/bin", "/bin",
-    "--symlink", "usr/bin", "/sbin",
-    "--proc", "/proc",
-    "--dev", "/dev",
-    "--tmpfs", "/tmp",
-    "--unshare-all",          # user, pid, net, ipc, uts, cgroup, ...
+    "--ro-bind",
+    "/usr",
+    "/usr",
+    "--ro-bind",
+    "/etc",
+    "/etc",
+    "--symlink",
+    "usr/lib",
+    "/lib",
+    "--symlink",
+    "usr/lib64",
+    "/lib64",
+    "--symlink",
+    "usr/bin",
+    "/bin",
+    "--symlink",
+    "usr/bin",
+    "/sbin",
+    "--proc",
+    "/proc",
+    "--dev",
+    "/dev",
+    "--tmpfs",
+    "/tmp",
+    "--unshare-all",  # user, pid, net, ipc, uts, cgroup, ...
     "--die-with-parent",
     "--new-session",
-    "--setenv", "TMPDIR", "/tmp",
-    "--setenv", "LANG", "C.UTF-8",
-    "--setenv", "TERM", "dumb",
+    "--setenv",
+    "TMPDIR",
+    "/tmp",
+    "--setenv",
+    "LANG",
+    "C.UTF-8",
+    "--setenv",
+    "TERM",
+    "dumb",
 ]
 
 
@@ -98,12 +120,14 @@ def _child_limits(cpu_seconds=CPU_SECONDS):
     still get SIGXCPU'd at the default 120s: a confusing failure clearly
     different from, and arriving well before, "timed out after {timeout}s".
     """
+
     def lim(what, soft, hard):
         try:
             resource.setrlimit(what, (soft, hard))
         except (ValueError, OSError):
             pass
-    lim(resource.RLIMIT_CORE, 0, 0)              # no core dumps
+
+    lim(resource.RLIMIT_CORE, 0, 0)  # no core dumps
     lim(resource.RLIMIT_FSIZE, FSIZE_MAX, FSIZE_MAX)
     lim(resource.RLIMIT_NOFILE, NOFILE_MAX, NOFILE_MAX)
     lim(resource.RLIMIT_CPU, cpu_seconds, cpu_seconds)
@@ -112,9 +136,17 @@ def _child_limits(cpu_seconds=CPU_SECONDS):
         lim(resource.RLIMIT_NPROC, TASKS_MAX, TASKS_MAX)
 
 
-def build_argv(command: str, workspace: Path, *, write_workspace=False,
-               extra_writable=(), read_only=(), net=False, sandbox=True,
-               cwd=None) -> list:
+def build_argv(
+    command: str,
+    workspace: Path,
+    *,
+    write_workspace=False,
+    extra_writable=(),
+    read_only=(),
+    net=False,
+    sandbox=True,
+    cwd=None,
+) -> list:
     """argv for running `command` (a shell string) under the sandbox.
 
     The real $HOME (not just the declared workspace) is bound at its real
@@ -134,12 +166,22 @@ def build_argv(command: str, workspace: Path, *, write_workspace=False,
 
     argv = []
     if have_systemd_run():
-        argv += ["systemd-run", "--user", "--scope", "-q", "--collect",
-                 "-p", "MemoryMax=" + MEMORY_MAX,
-                 "-p", "MemorySwapMax=" + MEMORY_SWAP_MAX,
-                 "-p", "TasksMax=%d" % TASKS_MAX,
-                 "-p", "CPUQuota=" + CPU_QUOTA,
-                 "--"]
+        argv += [
+            "systemd-run",
+            "--user",
+            "--scope",
+            "-q",
+            "--collect",
+            "-p",
+            "MemoryMax=" + MEMORY_MAX,
+            "-p",
+            "MemorySwapMax=" + MEMORY_SWAP_MAX,
+            "-p",
+            "TasksMax=%d" % TASKS_MAX,
+            "-p",
+            "CPUQuota=" + CPU_QUOTA,
+            "--",
+        ]
 
     argv += ["bwrap"] + list(BWRAP_BASE)
     for p in read_only:
@@ -150,17 +192,32 @@ def build_argv(command: str, workspace: Path, *, write_workspace=False,
         # Bound and pointed to by $HOME at the *same* real path, so `~`
         # inside the sandboxed shell resolves to the directory that is
         # actually bound, not a stand-in the bind doesn't match.
-        argv += [flag, str(home), str(home),
-                 "--setenv", "HOME", str(home),
-                 "--setenv", "PATH", f"{home}/.local/bin:/usr/local/bin:/usr/bin:/bin"]
+        argv += [
+            flag,
+            str(home),
+            str(home),
+            "--setenv",
+            "HOME",
+            str(home),
+            "--setenv",
+            "PATH",
+            f"{home}/.local/bin:/usr/local/bin:/usr/bin:/bin",
+        ]
     else:
         # No real home to bind (unusual — e.g. a container with no home
         # directory at all): fall back to an empty synthetic one so $HOME
         # is still set to *something* sane rather than left unset, same as
         # before this function bound the real one.
-        argv += ["--dir", "/tmp/home",
-                 "--setenv", "HOME", "/tmp/home",
-                 "--setenv", "PATH", "/tmp/home/.local/bin:/usr/local/bin:/usr/bin:/bin"]
+        argv += [
+            "--dir",
+            "/tmp/home",
+            "--setenv",
+            "HOME",
+            "/tmp/home",
+            "--setenv",
+            "PATH",
+            "/tmp/home/.local/bin:/usr/local/bin:/usr/bin:/bin",
+        ]
     if workspace:
         argv += [flag, str(workspace), str(workspace)]
     for p in extra_writable:
@@ -227,8 +284,18 @@ def _kill_tree(root_pid, sig=signal.SIGKILL):
             pass
 
 
-def run(command, workspace, *, write_workspace=False, extra_writable=(),
-        read_only=(), net=False, sandbox=True, timeout=60, cwd=None):
+def run(
+    command,
+    workspace,
+    *,
+    write_workspace=False,
+    extra_writable=(),
+    read_only=(),
+    net=False,
+    sandbox=True,
+    timeout=60,
+    cwd=None,
+):
     """Run a command sandboxed. Returns a result dict; never raises for the
     command's own failures.
 
@@ -247,17 +314,29 @@ def run(command, workspace, *, write_workspace=False, extra_writable=(),
     "timed out" actually meaning stopped, not just no-longer-reported-on.
     """
     workspace = Path(workspace).resolve() if workspace else None
-    argv = build_argv(command, workspace, write_workspace=write_workspace,
-                      extra_writable=extra_writable, read_only=read_only,
-                      net=net, sandbox=sandbox, cwd=cwd)
+    argv = build_argv(
+        command,
+        workspace,
+        write_workspace=write_workspace,
+        extra_writable=extra_writable,
+        read_only=read_only,
+        net=net,
+        sandbox=sandbox,
+        cwd=cwd,
+    )
     # CPU_QUOTA allows up to 2 cores, so a legitimate multi-threaded command
     # can burn up to ~2x its wall-clock timeout in CPU-seconds; give the
     # RLIMIT_CPU fallback the same headroom instead of a fixed ceiling.
     cpu_limit = max(CPU_SECONDS, min(timeout * 2, 3600))
 
     try:
-        p = subprocess.Popen(argv, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                             text=True, preexec_fn=lambda: _child_limits(cpu_limit))
+        p = subprocess.Popen(
+            argv,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            preexec_fn=lambda: _child_limits(cpu_limit),
+        )
     except FileNotFoundError as e:
         return {"ok": False, "error": "sandbox tool missing: " + str(e)}
     except Exception as e:
@@ -265,18 +344,25 @@ def run(command, workspace, *, write_workspace=False, extra_writable=(),
 
     try:
         stdout, stderr = p.communicate(timeout=timeout)
-        return {"ok": p.returncode == 0, "code": p.returncode,
-                "stdout": stdout[-8000:], "stderr": stderr[-4000:],
-                "sandboxed": bool(sandbox and have_bwrap()),
-                "argv_head": argv[0]}
+        return {
+            "ok": p.returncode == 0,
+            "code": p.returncode,
+            "stdout": stdout[-8000:],
+            "stderr": stderr[-4000:],
+            "sandboxed": bool(sandbox and have_bwrap()),
+            "argv_head": argv[0],
+        }
     except subprocess.TimeoutExpired:
         _kill_tree(p.pid)
         try:
             p.communicate(timeout=5)  # reap; avoid leaving a zombie behind
         except Exception:
             pass
-        return {"ok": False, "error": f"timed out after {timeout}s",
-                "sandboxed": bool(sandbox and have_bwrap())}
+        return {
+            "ok": False,
+            "error": f"timed out after {timeout}s",
+            "sandboxed": bool(sandbox and have_bwrap()),
+        }
     except Exception as e:
         _kill_tree(p.pid)
         return {"ok": False, "error": "exec failed: " + str(e)}

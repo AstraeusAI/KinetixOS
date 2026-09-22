@@ -21,7 +21,8 @@ class ScreenshotErrorHandlingTests(unittest.TestCase):
         self.path = support.TMP / "screenshot-test.png"
         if self.path.exists():
             self.path.unlink()
-        patch = mock.patch("shutil.which", lambda name: "/usr/bin/spectacle" if name == "spectacle" else None)
+        patch = mock.patch("shutil.which", lambda name: "/usr/bin/spectacl"
+            "e" if name == "spectacle" else None)
         patch.start()
         self.addCleanup(patch.stop)
 
@@ -30,14 +31,16 @@ class ScreenshotErrorHandlingTests(unittest.TestCase):
         outright. 30s let that eat most of a task's step/time budget on one
         screenshot; a normal capture measured 0.3-0.7s even under load, so
         the timeout only needs headroom for a slow system, not for a wedge."""
-        with mock.patch("subprocess.run", side_effect=subprocess.TimeoutExpired(cmd="spectacle", timeout=12)):
+        with mock.patch("subprocess.ru"
+            "n", side_effect=subprocess.TimeoutExpired(cmd="spectacle", timeout=12)):
             result = kwin.screenshot(self.path, mode="cursor")
         self.assertFalse(result["ok"])
         self.assertIn("cursor", result["error"])
         self.assertIn("mode=active", result["error"])
 
     def test_a_timeout_in_a_reliable_mode_has_no_cursor_specific_hint(self):
-        with mock.patch("subprocess.run", side_effect=subprocess.TimeoutExpired(cmd="spectacle", timeout=12)):
+        with mock.patch("subprocess.ru"
+            "n", side_effect=subprocess.TimeoutExpired(cmd="spectacle", timeout=12)):
             result = kwin.screenshot(self.path, mode="active")
         self.assertFalse(result["ok"])
         self.assertNotIn("cursor", result["error"])
@@ -47,7 +50,8 @@ class ScreenshotErrorHandlingTests(unittest.TestCase):
         empty stderr *and* stdout. The old message was "capture failed: "
         with nothing after the colon — no exit code, no hint, nothing a
         caller could act on."""
-        fake = subprocess.CompletedProcess(args=["spectacle"], returncode=2, stdout="", stderr="")
+        fake = subprocess.CompletedProcess(args=["spectacl"
+            "e"], returncode=2, stdout="", stderr="")
         with mock.patch("subprocess.run", return_value=fake):
             result = kwin.screenshot(self.path, mode="cursor")
         self.assertFalse(result["ok"])
@@ -55,7 +59,8 @@ class ScreenshotErrorHandlingTests(unittest.TestCase):
         self.assertIn("cursor mode", result["error"])
 
     def test_a_silent_failure_in_a_reliable_mode_has_no_cursor_specific_hint(self):
-        fake = subprocess.CompletedProcess(args=["spectacle"], returncode=1, stdout="", stderr="")
+        fake = subprocess.CompletedProcess(args=["spectacl"
+            "e"], returncode=1, stdout="", stderr="")
         with mock.patch("subprocess.run", return_value=fake):
             result = kwin.screenshot(self.path, mode="fullscreen")
         self.assertFalse(result["ok"])
@@ -121,7 +126,9 @@ class ScreenScaleTests(unittest.TestCase):
 
     def test_window_geometry_is_reported_in_screenshot_pixels(self):
         with mock.patch.object(kwin, "_screen_scale", return_value=1.7):
-            w = kwin._win_to_screenshot_space({"x": 100, "y": 50, "w": 400, "h": 300, "caption": "x"})
+            w = kwin._win_to_screenshot_space(
+                {"x": 100, "y": 50, "w": 400, "h": 300, "caption": "x"}
+            )
         self.assertEqual({"x": 170, "y": 85, "w": 680, "h": 510, "caption": "x"}, w)
 
     def test_place_pointer_converts_the_request_to_logical_before_moving(self):
@@ -205,7 +212,8 @@ class ImageDimensionTests(unittest.TestCase):
         path.write_bytes(png_hdr)
         self.addCleanup(lambda: path.unlink(missing_ok=True))
 
-        fake = subprocess.CompletedProcess(args=["spectacle"], returncode=0, stdout="", stderr="")
+        fake = subprocess.CompletedProcess(args=["spectacl"
+            "e"], returncode=0, stdout="", stderr="")
         with mock.patch("subprocess.run", return_value=fake), \
              mock.patch("shutil.which", return_value="/usr/bin/spectacle"), \
              mock.patch.object(kwin, "_screen_scale", return_value=1.5):
@@ -263,8 +271,14 @@ class ZoomAndScreenChangeTests(unittest.TestCase):
 
     def test_wait_for_change_detects_window_change(self):
         uuids = ["win-1", "win-2"]
-        with mock.patch.object(kwin, "_active_uuid", side_effect=lambda: uuids.pop(0) if uuids else "win-2"), \
-             mock.patch("time.sleep"):
+        with (
+            mock.patch.object(
+                kwin,
+                "_active_uuid",
+                side_effect=lambda: uuids.pop(0) if uuids else "win-2",
+            ),
+            mock.patch("time.sleep"),
+        ):
             r = kwin.wait_for_change(timeout=1.0, poll_interval=0.1)
         self.assertTrue(r["ok"])
         self.assertTrue(r["changed"])
@@ -275,7 +289,8 @@ class ZoomAndScreenChangeTests(unittest.TestCase):
         def fake_screenshot(p, **kwargs):
             nonlocal call_count
             call_count += 1
-            Path(p).write_bytes(b"initial" if call_count == 1 else b"updated" + b" " * 100)
+            Path(p).write_bytes(b"initia"
+                b"l" if call_count == 1 else b"updated" + b" " * 100)
             return {"ok": True, "path": str(p)}
 
         with mock.patch.object(kwin, "_active_uuid", return_value="win-constant"), \
@@ -323,14 +338,16 @@ class ClickElementAndAnnotationTests(unittest.TestCase):
         kwin._LAST_ANNOTATED_ELEMENTS[1] = {
             "id": 1, "text": "Save", "x": 250, "y": 350, "box": [200, 340, 100, 20]
         }
-        with mock.patch.object(kwin, "click", return_value={"ok": True, "measured": {"x": 250, "y": 350}}) as mock_click:
+        with mock.patch.object(kwin, "click", return_value={"ok": True, "measure"
+            "d": {"x": 250, "y": 350}}) as mock_click:
             res = kwin.click_element(1, button="left", clicks=1)
         self.assertTrue(res["ok"])
         self.assertEqual(res["id"], 1)
         self.assertEqual(res["text"], "Save")
         self.assertEqual(res["x"], 250)
         self.assertEqual(res["y"], 350)
-        mock_click.assert_called_once_with(250, 350, button="left", clicks=1, modifiers=None)
+        mock_click.assert_called_once_with(250, 350, button="lef"
+            "t", clicks=1, modifiers=None)
 
     def test_click_element_empty_cache_reports_observe_screen_hint(self):
         res = kwin.click_element(1)
@@ -339,7 +356,8 @@ class ClickElementAndAnnotationTests(unittest.TestCase):
 
     def test_click_element_missing_id_lists_available_badges(self):
         kwin._LAST_ANNOTATED_ELEMENTS[1] = {"id": 1, "text": "OK", "x": 100, "y": 100}
-        kwin._LAST_ANNOTATED_ELEMENTS[2] = {"id": 2, "text": "Cancel", "x": 200, "y": 200}
+        kwin._LAST_ANNOTATED_ELEMENTS[2] = {"id": 2, "text": "Cance"
+            "l", "x": 200, "y": 200}
         res = kwin.click_element(5)
         self.assertFalse(res["ok"])
         self.assertIn("element [5] not found", res["error"])
@@ -354,11 +372,20 @@ class ClickElementAndAnnotationTests(unittest.TestCase):
         fake_ocr = {
             "ok": True,
             "lines": [
-                {"text": "Save Changes", "box": (10, 10, 80, 20), "left": 10, "top": 10, "width": 80, "height": 20},
+                {
+                    "text": "Save Changes", "box": (10, 10, 80, 20),
+                    "left": 10, "top": 10, "width": 80, "height": 20,
+                },
             ],
             "words": [
-                {"text": "Save", "box": (10, 10, 35, 20), "left": 10, "top": 10, "width": 35, "height": 20},
-                {"text": "Changes", "box": (50, 10, 40, 20), "left": 50, "top": 10, "width": 40, "height": 20},
+                {
+                    "text": "Save", "box": (10, 10, 35, 20),
+                    "left": 10, "top": 10, "width": 35, "height": 20,
+                },
+                {
+                    "text": "Changes", "box": (50, 10, 40, 20),
+                    "left": 50, "top": 10, "width": 40, "height": 20,
+                },
             ]
         }
         src = support.TMP / "test_annotate_src.png"
@@ -368,7 +395,9 @@ class ClickElementAndAnnotationTests(unittest.TestCase):
         self.addCleanup(lambda: dst.unlink(missing_ok=True))
 
         def fake_run(cmd, capture_output=True, timeout=20):
-            return subprocess.CompletedProcess(cmd, returncode=0, stdout=b"", stderr=b"")
+            return subprocess.CompletedProcess(
+                cmd, returncode=0, stdout=b"", stderr=b""
+            )
 
         with mock.patch("shutil.which", return_value="/usr/bin/magick"), \
              mock.patch.object(kwin, "ocr_screen", return_value=fake_ocr), \
@@ -385,8 +414,10 @@ class ClickElementAndAnnotationTests(unittest.TestCase):
             captured_script.append(script)
             return {"ok": True}
 
-        with mock.patch.object(kwin, "_window_action", side_effect=fake_window_action), \
-             mock.patch.object(kwin, "_wait_until_active", return_value=True):
+        with (
+            mock.patch.object(kwin, "_window_action", side_effect=fake_window_action),
+            mock.patch.object(kwin, "_wait_until_active", return_value=True),
+        ):
             res = kwin.activate_window("test-uuid")
 
         self.assertTrue(res["ok"])
@@ -395,23 +426,39 @@ class ClickElementAndAnnotationTests(unittest.TestCase):
 
     def test_click_text_forwards_parameters_and_returns_rich_payload(self):
         fake_matches = [
-            {"text": "Submit", "x": 120, "y": 240, "box": [100, 230, 40, 20], "confidence": 92.0, "exact": True},
-            {"text": "Submit", "x": 120, "y": 480, "box": [100, 470, 40, 20], "confidence": 88.0, "exact": True}
+            {"text": "Submit", "x": 120, "y": 240, "box": [100, 230, 40, 20], "confiden"
+                "ce": 92.0, "exact": True},
+            {"text": "Submit", "x": 120, "y": 480, "box": [100, 470, 40, 20], "confiden"
+                "ce": 88.0, "exact": True}
         ]
-        with mock.patch.object(kwin, "find_text", return_value={"ok": True, "matches": fake_matches}) as mock_find, \
-             mock.patch.object(kwin, "click", return_value={"ok": True, "measured": {"x": 120, "y": 480}}) as mock_click:
-            res = kwin.click_text("Submit", button="left", clicks=2, index=1, exact=True, min_confidence=50.0)
+        with (
+            mock.patch.object(
+                kwin,
+                "find_text",
+                return_value={"ok": True, "matches": fake_matches},
+            ) as mock_find,
+            mock.patch.object(
+                kwin,
+                "click",
+                return_value={"ok": True, "measured": {"x": 120, "y": 480}},
+            ) as mock_click,
+        ):
+            res = kwin.click_text("Submi"
+                "t", button="left", clicks=2, index=1, exact=True, min_confidence=50.0)
 
         self.assertTrue(res["ok"])
         self.assertEqual(res["index"], 1)
         self.assertEqual(res["matches_found"], 2)
         self.assertEqual(res["target"]["y"], 480)
-        mock_find.assert_called_once_with("Submit", region=None, exact=True, min_confidence=50.0)
-        mock_click.assert_called_once_with(120, 480, button="left", clicks=2, modifiers=None)
+        mock_find.assert_called_once_with("Submi"
+            "t", region=None, exact=True, min_confidence=50.0)
+        mock_click.assert_called_once_with(120, 480, button="lef"
+            "t", clicks=2, modifiers=None)
 
     def test_click_text_index_out_of_bounds_returns_error(self):
         fake_matches = [{"text": "OK", "x": 50, "y": 50}]
-        with mock.patch.object(kwin, "find_text", return_value={"ok": True, "matches": fake_matches}):
+        with mock.patch.object(kwin, "find_tex"
+            "t", return_value={"ok": True, "matches": fake_matches}):
             res = kwin.click_text("OK", index=5)
         self.assertFalse(res["ok"])
         self.assertIn("requested match index 5 out of range", res["error"])
@@ -439,7 +486,8 @@ class ClickElementAndAnnotationTests(unittest.TestCase):
         self.assertEqual(kwin.parse_chord("Page-Down"), ([], "page-down"))
         self.assertEqual(kwin.parse_chord("shift+Page-Down"), (["shift"], "page-down"))
         self.assertEqual(kwin.parse_chord("ctrl-shift-t"), (["ctrl", "shift"], "t"))
-        self.assertEqual(kwin.parse_chord("ctrl-shift+Page-Up"), (["ctrl", "shift"], "page-up"))
+        self.assertEqual(kwin.parse_chord("ctrl-shift+Page-U"
+            "p"), (["ctrl", "shift"], "page-up"))
 
     def test_key_press_modifier_plus_hyphenated_key_resolves(self):
         calls = []
@@ -479,17 +527,30 @@ class OcrRegionOffsetTests(unittest.TestCase):
     so getting this offset wrong doesn't error, it just clicks the wrong
     spot while reporting success."""
 
-    TSV = ("level\tpage_num\tblock_num\tpar_num\tline_num\tword_num\tleft\ttop\twidth\theight\tconf\ttext\n"
+    TSV = ("level\tpage_num\tblock_num\tpar_num\tline_num\tword_num\tleft\ttop\twidth\t"
+        "height\tconf\ttext\n"
            "5\t1\t1\t1\t1\t1\t15\t25\t40\t12\t92.5\tHello\n")
 
     def _run(self, region, region_applied):
-        with mock.patch("shutil.which", return_value="/usr/bin/tesseract"), \
-             mock.patch.object(kwin, "screenshot",
-                               return_value={"ok": True, "path": "/tmp/x.png",
-                                             "region_applied": region_applied}), \
-             mock.patch("subprocess.run",
-                        return_value=subprocess.CompletedProcess([], 0, stdout=self.TSV, stderr="")), \
-             mock.patch.object(Path, "unlink", return_value=None):
+        with (
+            mock.patch("shutil.which", return_value="/usr/bin/tesseract"),
+            mock.patch.object(
+                kwin,
+                "screenshot",
+                return_value={
+                    "ok": True,
+                    "path": "/tmp/x.png",
+                    "region_applied": region_applied,
+                },
+            ),
+            mock.patch(
+                "subprocess.run",
+                return_value=subprocess.CompletedProcess(
+                    [], 0, stdout=self.TSV, stderr=""
+                ),
+            ),
+            mock.patch.object(Path, "unlink", return_value=None),
+        ):
             return kwin.ocr_screen(region=region, min_confidence=0)
 
     def test_offset_added_when_region_crop_actually_applied(self):

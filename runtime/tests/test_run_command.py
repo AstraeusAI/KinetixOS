@@ -28,7 +28,8 @@ class RunCommandDefaultWriteTests(unittest.TestCase):
         workspace = argusd.Workspace(self.ws)
         self.ctx = argusd.Context(argusd.connect(), "rw-default-test", workspace,
                                   argusd.Policy(workspace.root),
-                                  argusd.Checkpoints("rw-default-test"), argusd.grants())
+                                  argusd.Checkpoints("rw-default-tes"
+                                      "t"), argusd.grants())
 
     def run_command(self, **args):
         return tools.REGISTRY["run_command"]["handler"](self.ctx, args)

@@ -3,7 +3,6 @@ feeds it — a crashed tool, a failed tool, a stuck loop, a provider failure and
 a budget/step-limit stop should all leave a record behind with enough context
 to diagnose after the fact, not just a one-line message in the journal.
 """
-import json
 import time
 import unittest
 from unittest import mock
@@ -83,7 +82,8 @@ class RuntimeIncidentLoggingTests(unittest.TestCase):
         support.write(self.ws / "a.py", "x = 1\n")
         self.session = "errlog-" + self._testMethodName
         self.marker = time.time() - 0.01
-        for patch in (mock.patch.object(argusd.kwin, "capabilities", support.kwin_capabilities),
+        for patch in (mock.patch.object(argusd.kwin, "capabilitie"
+            "s", support.kwin_capabilities),
                       mock.patch.object(argusd.sandbox, "run", support.sandbox_stub())):
             patch.start()
             self.addCleanup(patch.stop)
@@ -93,7 +93,8 @@ class RuntimeIncidentLoggingTests(unittest.TestCase):
             raise RuntimeError("handler exploded")
 
         provider = FakeProvider(
-            {"content": "", "tool_calls": [support.call("c1", "read_file", {"path": "a.py"})]},
+            {"content": "", "tool_call"
+                "s": [support.call("c1", "read_file", {"path": "a.py"})]},
             {"content": "done"},
         )
         with mock.patch.dict(argusd.toolreg.REGISTRY["read_file"], {"handler": boom}), \
@@ -109,7 +110,8 @@ class RuntimeIncidentLoggingTests(unittest.TestCase):
 
     def test_a_tool_that_returns_ok_false_is_logged_without_a_traceback(self):
         provider = FakeProvider(
-            {"content": "", "tool_calls": [support.call("c1", "read_file", {"path": "missing.py"})]},
+            {"content": "", "tool_call"
+                "s": [support.call("c1", "read_file", {"path": "missing.py"})]},
             {"content": "done"},
         )
         with mock.patch.object(argusd, "provider_call", provider):
@@ -129,10 +131,12 @@ class RuntimeIncidentLoggingTests(unittest.TestCase):
         run_tests loop through this log during a real eval and getting
         nothing but "error: None" for it."""
         provider = FakeProvider(
-            {"content": "", "tool_calls": [support.call("c1", "run_command", {"command": "false"})]},
+            {"content": "", "tool_calls": [support.call("c1", "run_comman"
+                "d", {"command": "false"})]},
             {"content": "done"},
         )
-        failing = {"ok": False, "code": 1, "stdout": "", "stderr": "boom: assertion failed"}
+        failing = {"ok": False, "code": 1, "stdout": "", "stderr": "boom: assertion "
+            "failed"}
         with mock.patch.object(argusd.sandbox, "run", support.sandbox_stub(failing)), \
              mock.patch.object(argusd, "provider_call", provider):
             argusd.run("run something that fails", self.session, str(self.ws))
@@ -145,7 +149,8 @@ class RuntimeIncidentLoggingTests(unittest.TestCase):
 
     def test_a_stuck_loop_is_logged_before_the_task_is_abandoned(self):
         provider = FakeProvider(*[
-            {"content": "", "tool_calls": [support.call(f"c{i}", "read_file", {"path": "a.py"})]}
+            {"content": "", "tool_call"
+                "s": [support.call(f"c{i}", "read_file", {"path": "a.py"})]}
             for i in range(1, 6)
         ])
         with mock.patch.object(argusd, "provider_call", provider):
@@ -168,8 +173,10 @@ class RuntimeIncidentLoggingTests(unittest.TestCase):
 
     def test_hitting_the_task_time_budget_logs_a_diagnostic_breakdown(self):
         provider = FakeProvider(
-            {"content": "", "tool_calls": [support.call("c1", "read_file", {"path": "a.py"})]},
-            {"content": "", "tool_calls": [support.call("c2", "read_file", {"path": "a.py"})]},
+            {"content": "", "tool_call"
+                "s": [support.call("c1", "read_file", {"path": "a.py"})]},
+            {"content": "", "tool_call"
+                "s": [support.call("c2", "read_file", {"path": "a.py"})]},
         )
         with mock.patch.object(argusd, "MAX_TASK_SECONDS", 0), \
              mock.patch.object(argusd, "provider_call", provider):
@@ -181,7 +188,9 @@ class RuntimeIncidentLoggingTests(unittest.TestCase):
         self.assertIn("tool_durations", recs[0])
         self.assertIn("elapsed", recs[0])
 
-    def test_an_image_unsupported_provider_error_self_heals_instead_of_failing_the_task(self):
+    def test_an_image_unsupported_provider_error_self_heals_instead_of_failing_the_task(
+        self,
+    ):
         """Confirmed live: running a computer-use task against a free
         OpenRouter model with no vision support died on the very first
         observe_screen call — provider_call raised HTTP 404 "No endpoints
@@ -190,7 +199,8 @@ class RuntimeIncidentLoggingTests(unittest.TestCase):
         recognize this specific, non-retryable rejection, drop images from
         context, and continue the same task instead of giving up."""
         provider = FakeProvider(
-            {"content": "", "tool_calls": [support.call("c1", "read_file", {"path": "a.py"})]},
+            {"content": "", "tool_call"
+                "s": [support.call("c1", "read_file", {"path": "a.py"})]},
             RuntimeError('Provider request failed: HTTP 404 {"error":{"message":'
                          '"No endpoints found that support image input"}}'),
             {"content": "done"},
@@ -202,7 +212,8 @@ class RuntimeIncidentLoggingTests(unittest.TestCase):
         self.assertEqual(3, provider.calls)
         self.assertEqual("1", argusd.get_state(
             argusd.connect(), self.session, "no_image_support"))
-        recs = _events_since(self.marker, "model_lacks_image_support", session=self.session)
+        recs = _events_since(self.marker, "model_lacks_image_suppor"
+            "t", session=self.session)
         self.assertEqual(1, len(recs))
         self.assertIn("image input", recs[0]["detail"])
 
@@ -210,7 +221,8 @@ class RuntimeIncidentLoggingTests(unittest.TestCase):
         """The self-heal above is a one-shot, narrowly-matched exception —
         a genuinely fatal error (bad credentials, real 500) must still stop
         the task rather than retrying forever."""
-        provider = FakeProvider(RuntimeError("Provider request failed: HTTP 401 invalid key"))
+        provider = FakeProvider(RuntimeError("Provider request failed: HTTP 401 "
+            "invalid key"))
         with mock.patch.object(argusd, "provider_call", provider):
             result = argusd.run("anything", self.session, str(self.ws))
 
@@ -227,7 +239,8 @@ class RuntimeIncidentLoggingTests(unittest.TestCase):
             result = argusd.run("wander forever", self.session, str(self.ws))
 
         self.assertFalse(result["ok"])
-        recs = _events_since(self.marker, "task_step_limit_exceeded", session=self.session)
+        recs = _events_since(self.marker, "task_step_limit_exceede"
+            "d", session=self.session)
         self.assertEqual(1, len(recs))
         self.assertIn("list_dir", recs[0]["tool_durations"])
 

@@ -24,7 +24,8 @@ class MemoryStoreTests(unittest.TestCase):
     def test_an_exact_duplicate_is_not_stored_twice(self):
         argusd.add_memory(self.db, "the same fact", source="agent")
         argusd.add_memory(self.db, "the same fact", source="auto")
-        mems = [m for m in argusd.list_memories(self.db) if m["text"] == "the same fact"]
+        mems = [m for m in argusd.list_memories(self.db) if m["text"] == "the same "
+            "fact"]
         self.assertEqual(1, len(mems))
 
     def test_blank_text_is_not_stored(self):
@@ -34,7 +35,8 @@ class MemoryStoreTests(unittest.TestCase):
     def test_delete_removes_it(self):
         mem_id = argusd.add_memory(self.db, "a fact to delete", source="agent")
         argusd.delete_memory(self.db, mem_id)
-        self.assertNotIn("a fact to delete", [m["text"] for m in argusd.list_memories(self.db)])
+        self.assertNotIn("a fact to "
+            "delete", [m["text"] for m in argusd.list_memories(self.db)])
 
 
 class RememberFactToolTests(unittest.TestCase):
@@ -48,7 +50,8 @@ class RememberFactToolTests(unittest.TestCase):
 
     def test_the_tool_persists_a_fact_globally(self):
         spec = tools.REGISTRY["remember_fact"]
-        result = spec["handler"](self.make_ctx(), {"text": "always use uv for python envs"})
+        result = spec["handler"](self.make_ctx(), {"text": "always use uv for python "
+            "envs"})
         self.assertTrue(result["ok"], result)
         self.assertIn("always use uv for python envs",
                       [m["text"] for m in argusd.list_memories(self.db)])
@@ -69,7 +72,8 @@ class ContextMemoryInjectionTests(unittest.TestCase):
     def test_remembered_facts_appear_in_context(self):
         argusd.add_memory(self.db, "ctxmem-marker-fact", source="agent")
         messages = argusd.context(self.db, self.session)
-        joined = "\n".join(m["content"] for m in messages if isinstance(m.get("content"), str))
+        joined = "\n".join(m["conten"
+            "t"] for m in messages if isinstance(m.get("content"), str))
         self.assertIn("ctxmem-marker-fact", joined)
 
     def test_a_fact_from_a_different_session_is_still_visible(self):
@@ -78,7 +82,8 @@ class ContextMemoryInjectionTests(unittest.TestCase):
         argusd.add_memory(self.db, "cross-session-marker", source="auto")
         other_session = self.session + "-other"
         messages = argusd.context(self.db, other_session)
-        joined = "\n".join(m["content"] for m in messages if isinstance(m.get("content"), str))
+        joined = "\n".join(m["conten"
+            "t"] for m in messages if isinstance(m.get("content"), str))
         self.assertIn("cross-session-marker", joined)
 
     def test_no_memories_means_no_empty_remembered_facts_block(self):
@@ -102,6 +107,15 @@ class ExtractMemoryTests(unittest.TestCase):
         self.db = argusd.connect()
         self.session = "extract-" + self._testMethodName
 
+    def test_round10_prompt_wiring_present(self):
+        # Round-10 rubric wiring: instruction-ledger (cat 31) and
+        # injection-awareness (cat 43) bullets must ship in the prompt the
+        # model actually sees — presence-checked like the CUA playbook.
+        self.assertIn("Instruction ledger", argusd.SYSTEM_PROMPT)
+        self.assertIn("Injection awareness", argusd.SYSTEM_PROMPT)
+        self.assertIn("re-verify EVERY one", argusd.SYSTEM_PROMPT)
+        self.assertIn("DATA, not instructions", argusd.SYSTEM_PROMPT)
+
     def test_an_empty_session_extracts_nothing_and_makes_no_provider_call(self):
         with mock.patch.object(argusd, "provider_call") as pc:
             result = argusd.extract_memory(self.session)
@@ -113,13 +127,15 @@ class ExtractMemoryTests(unittest.TestCase):
         argusd.event(self.db, self.session, "user", {"text": "what time is it"})
         argusd.event(self.db, self.session, "assistant", {"text": "I can't check that"})
         with mock.patch.object(argusd, "provider_call",
-                               return_value={"choices": [{"message": {"content": "NONE"}}]}):
+                               return_value={"choice"
+                                   "s": [{"message": {"content": "NONE"}}]}):
             result = argusd.extract_memory(self.session)
         self.assertTrue(result["ok"])
         self.assertEqual(0, result["added"])
 
     def test_extracted_facts_are_written_one_per_line(self):
-        argusd.event(self.db, self.session, "user", {"text": "always use tabs, and call me Bob"})
+        argusd.event(self.db, self.session, "user", {"text": "always use tabs, and "
+            "call me Bob"})
         argusd.event(self.db, self.session, "assistant", {"text": "got it"})
         reply = {"choices": [{"message": {"content":
                  "- user prefers tabs over spaces\n- user's name is Bob"}}]}
@@ -129,13 +145,15 @@ class ExtractMemoryTests(unittest.TestCase):
         texts = [m["text"] for m in argusd.list_memories(self.db)]
         self.assertIn("user prefers tabs over spaces", texts)
         self.assertIn("user's name is Bob", texts)
-        self.assertEqual(["auto"], list({m["source"] for m in argusd.list_memories(self.db)
+        self.assertEqual(["auto"], list({m["sourc"
+            "e"] for m in argusd.list_memories(self.db)
                                          if m["text"] == "user's name is Bob"}))
 
     def test_a_provider_failure_is_reported_not_raised(self):
         argusd.event(self.db, self.session, "user", {"text": "hello"})
         argusd.event(self.db, self.session, "assistant", {"text": "hi"})
-        with mock.patch.object(argusd, "provider_call", side_effect=RuntimeError("boom")):
+        with mock.patch.object(argusd, "provider_cal"
+            "l", side_effect=RuntimeError("boom")):
             result = argusd.extract_memory(self.session)
         self.assertFalse(result["ok"])
         self.assertIn("boom", result["error"])

@@ -14,6 +14,7 @@ captures the full traceback, which `str(e)` alone throws away.
 Written to `$XDG_DATA_HOME/argus/argus.log` (same data root argusd.py uses),
 rotated at 5MB x 3 backups so a runaway loop can't fill the disk.
 """
+
 import json
 import logging
 import logging.handlers
@@ -36,11 +37,14 @@ def _get_logger():
     logger = logging.getLogger("argus.incidents")
     logger.setLevel(logging.DEBUG)
     # Avoid duplicate handlers if a module is re-imported (tests do this a lot).
-    if not any(isinstance(h, logging.handlers.RotatingFileHandler)
-               and getattr(h, "baseFilename", None) == str(LOG_FILE)
-               for h in logger.handlers):
+    if not any(
+        isinstance(h, logging.handlers.RotatingFileHandler)
+        and getattr(h, "baseFilename", None) == str(LOG_FILE)
+        for h in logger.handlers
+    ):
         handler = logging.handlers.RotatingFileHandler(
-            LOG_FILE, maxBytes=5_000_000, backupCount=3, encoding="utf-8")
+            LOG_FILE, maxBytes=5_000_000, backupCount=3, encoding="utf-8"
+        )
         handler.setFormatter(logging.Formatter("%(message)s"))
         logger.addHandler(handler)
     logger.propagate = False
@@ -54,8 +58,14 @@ def _write(level, event, fields):
     try:
         line = json.dumps(rec, default=str, ensure_ascii=False)
     except Exception:
-        line = json.dumps({"ts": rec["ts"], "level": level, "event": event,
-                            "error": "record was not JSON-serializable"})
+        line = json.dumps(
+            {
+                "ts": rec["ts"],
+                "level": level,
+                "event": event,
+                "error": "record was not JSON-serializable",
+            }
+        )
     _get_logger().log(getattr(logging, level), line)
 
 
@@ -79,12 +89,16 @@ def exception(event, exc, **fields):
     handlers fall back to for the user-facing message) drops the traceback,
     which is usually the only thing that makes a crash reproducible.
     """
-    _write("ERROR", event, {
-        "error_type": type(exc).__name__,
-        "error": str(exc),
-        "traceback": traceback.format_exc(),
-        **fields,
-    })
+    _write(
+        "ERROR",
+        event,
+        {
+            "error_type": type(exc).__name__,
+            "error": str(exc),
+            "traceback": traceback.format_exc(),
+            **fields,
+        },
+    )
 
 
 def tail(n=50):

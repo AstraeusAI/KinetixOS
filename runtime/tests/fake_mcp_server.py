@@ -41,7 +41,8 @@ def main():
                 continue
             if MODE == "reject":
                 send({"jsonrpc": "2.0", "id": msg["id"],
-                      "error": {"code": -32600, "message": "unsupported protocol version"}})
+                      "error": {"code": -32600, "message": "unsupported protocol "
+                          "version"}})
                 continue
             send({"jsonrpc": "2.0", "id": msg["id"],
                   "result": {"protocolVersion": "2024-11-05", "capabilities": {},
@@ -60,7 +61,8 @@ def main():
             if MODE == "tool-error":
                 send({"jsonrpc": "2.0", "id": msg["id"],
                       "result": {"isError": True,
-                                "content": [{"type": "text", "text": "boom: it failed"}]}})
+                                "content": [{"type": "text", "text": "boom: it "
+                                    "failed"}]}})
                 continue
             text = "echo: " + str((params.get("arguments") or {}).get("text", ""))
             send({"jsonrpc": "2.0", "id": msg["id"],

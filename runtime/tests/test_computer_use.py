@@ -1,7 +1,8 @@
 """Comprehensive unit tests for the upgraded Computer Use Engine.
 
 Covers:
-- desktop_actions batch tool (action dispatch, stop_on_error, capture_after, focus guard)
+- desktop_actions batch tool (action dispatch, stop_on_error, capture_after,
+  focus guard)
 - zoom_region tool & lossless 1:1 image payload preservation
 - mouse_hover tool
 - wait_for_screen_change tool
@@ -76,7 +77,8 @@ class ComputerUseToolTests(unittest.TestCase):
 
         def fake_screenshot(p, mode="fullscreen", stamp_cursor=False, **kwargs):
             Path(p).write_bytes(b"fake-png-data")
-            return {"ok": True, "path": str(p), "width": 1920, "height": 1080, "scale": 1.0}
+            return {"ok": True, "path": str(p), "width": 1920, "heigh"
+                "t": 1080, "scale": 1.0}
 
         with mock.patch.object(kwin, "click", fake_click), \
              mock.patch.object(kwin, "move_pointer", fake_move), \
@@ -94,7 +96,8 @@ class ComputerUseToolTests(unittest.TestCase):
                 {"action": "key", "key": "Return"},
                 {"action": "hover", "x": 300, "y": 400, "duration": 0.3},
                 {"action": "scroll", "amount": 5, "direction": "down"},
-                {"action": "drag", "start_x": 10, "start_y": 10, "end_x": 50, "end_y": 50},
+                {"action": "drag", "start_"
+                    "x": 10, "start_y": 10, "end_x": 50, "end_y": 50},
                 {"action": "wait", "duration": 0.1},
             ]
             r = tools.REGISTRY["desktop_actions"]["handler"](self.ctx, {
@@ -137,7 +140,9 @@ class ComputerUseToolTests(unittest.TestCase):
 
     def test_desktop_actions_requires_input_grant(self):
         ctx_no_grant = DummyContext(self.tmp, grants={"input": False, "screen": True})
-        r = tools.REGISTRY["desktop_actions"]["handler"](ctx_no_grant, {"actions": [{"action": "key", "key": "Return"}]})
+        r = tools.REGISTRY["desktop_actions"]["handler"](
+            ctx_no_grant, {"actions": [{"action": "key", "key": "Return"}]}
+        )
         self.assertFalse(r["ok"])
         self.assertIn("input grant disabled", r["error"])
 
@@ -161,30 +166,62 @@ class ComputerUseToolTests(unittest.TestCase):
         self.assertIn("zoom-", r["path"])
 
     def test_mouse_hover_tool_delegates_to_kwin_hover(self):
-        with mock.patch.object(kwin, "hover", return_value={"ok": True, "x": 100, "y": 200, "hovered_seconds": 0.4}):
-            r = tools.REGISTRY["mouse_hover"]["handler"](self.ctx, {"x": 100, "y": 200, "duration": 0.4})
+        with mock.patch.object(
+            kwin,
+            "hover",
+            return_value={"ok": True, "x": 100, "y": 200, "hovered_seconds": 0.4},
+        ):
+            r = tools.REGISTRY["mouse_hove"
+                "r"]["handler"](self.ctx, {"x": 100, "y": 200, "duration": 0.4})
         self.assertTrue(r["ok"], r)
         self.assertEqual(r["hovered_seconds"], 0.4)
 
     def test_wait_for_screen_change_tool(self):
-        with mock.patch.object(kwin, "wait_for_change", return_value={"ok": True, "changed": True, "reason": "screen pixels updated"}):
-            r = tools.REGISTRY["wait_for_screen_change"]["handler"](self.ctx, {"timeout": 2.0})
+        with mock.patch.object(
+            kwin,
+            "wait_for_change",
+            return_value={
+                "ok": True,
+                "changed": True,
+                "reason": "screen pixels updated",
+            },
+        ):
+            r = tools.REGISTRY["wait_for_screen_chang"
+                "e"]["handler"](self.ctx, {"timeout": 2.0})
         self.assertTrue(r["ok"], r)
         self.assertTrue(r["changed"])
 
     def test_mouse_down_and_up_tools(self):
-        with mock.patch.object(kwin, "mouse_down", return_value={"ok": True, "button": "left", "x": 100, "y": 100}) as m_down, \
-             mock.patch.object(kwin, "mouse_up", return_value={"ok": True, "button": "left", "x": 100, "y": 100}) as m_up:
-            r1 = tools.REGISTRY["mouse_down"]["handler"](self.ctx, {"button": "left", "x": 100, "y": 100})
-            r2 = tools.REGISTRY["mouse_up"]["handler"](self.ctx, {"button": "left", "x": 100, "y": 100})
+        with (
+            mock.patch.object(
+                kwin,
+                "mouse_down",
+                return_value={"ok": True, "button": "left", "x": 100, "y": 100},
+            ) as m_down,
+            mock.patch.object(
+                kwin,
+                "mouse_up",
+                return_value={"ok": True, "button": "left", "x": 100, "y": 100},
+            ) as m_up,
+        ):
+            r1 = tools.REGISTRY["mouse_dow"
+                "n"]["handler"](self.ctx, {"button": "left", "x": 100, "y": 100})
+            r2 = tools.REGISTRY["mouse_u"
+                "p"]["handler"](self.ctx, {"button": "left", "x": 100, "y": 100})
         self.assertTrue(r1["ok"])
         self.assertTrue(r2["ok"])
         m_down.assert_called_once_with(button="left", x=100, y=100)
         m_up.assert_called_once_with(button="left", x=100, y=100)
 
     def test_key_down_and_up_tools(self):
-        with mock.patch.object(kwin, "key_down", return_value={"ok": True, "key": "ctrl"}) as k_down, \
-             mock.patch.object(kwin, "key_up", return_value={"ok": True, "key": "ctrl"}) as k_up:
+        with (
+            mock.patch.object(
+                kwin, "key_down", return_value={"ok": True, "key": "ctrl"}
+            ) as k_down,
+            mock.patch.object(
+                kwin, "key_up", return_value={"ok": True, "key": "ctrl"}
+            ) as k_up,
+        ):
             r1 = tools.REGISTRY["key_down"]["handler"](self.ctx, {"key": "ctrl"})
             r2 = tools.REGISTRY["key_up"]["handler"](self.ctx, {"key": "ctrl"})
         self.assertTrue(r1["ok"])
@@ -286,7 +323,8 @@ class ComputerUseToolTests(unittest.TestCase):
                     "width": 1920, "height": 1080, "scale": 1.0}
 
         with mock.patch.object(kwin, "screenshot", fake_screenshot):
-            r = tools.REGISTRY["observe_screen"]["handler"](self.ctx, {"grid": True, "grid_step": 150})
+            r = tools.REGISTRY["observe_scree"
+                "n"]["handler"](self.ctx, {"grid": True, "grid_step": 150})
         self.assertTrue(r["ok"], r)
         self.assertTrue(r.get("grid"))
         self.assertEqual(r.get("grid_step"), 150)
@@ -295,8 +333,16 @@ class ComputerUseToolTests(unittest.TestCase):
         fake_list = {
             "ok": True,
             "windows": [
-                {"uuid": "1", "caption": "Terminal - bash", "cls": "kitty", "pid": 100, "x": 0, "y": 0, "w": 800, "h": 600, "active": True, "minimized": False, "fullscreen": False},
-                {"uuid": "2", "caption": "Mozilla Firefox", "cls": "firefox", "pid": 200, "x": 100, "y": 100, "w": 1200, "h": 900, "active": False, "minimized": False, "fullscreen": False},
+                {
+                    "uuid": "1", "caption": "Terminal - bash", "cls": "kitty",
+                    "pid": 100, "x": 0, "y": 0, "w": 800, "h": 600,
+                    "active": True, "minimized": False, "fullscreen": False,
+                },
+                {
+                    "uuid": "2", "caption": "Mozilla Firefox", "cls": "firefox",
+                    "pid": 200, "x": 100, "y": 100, "w": 1200, "h": 900,
+                    "active": False, "minimized": False, "fullscreen": False,
+                },
             ]
         }
         with mock.patch.object(kwin, "available", return_value=True), \
@@ -326,12 +372,15 @@ class ComputerUseToolTests(unittest.TestCase):
              mock.patch("time.sleep"):
 
             # Test clear_before with standard text (paste=False)
-            r1 = tools.REGISTRY["type_text"]["handler"](self.ctx, {"text": "hello", "clear_before": True, "paste": False})
+            r1 = tools.REGISTRY["type_text"]["handler"](self.ctx, {"text": "hello", "cl"
+                "ear_before": True, "paste": False})
             self.assertTrue(r1["ok"])
 
             # Test Unicode text automatically triggering clipboard paste
             calls.clear()
-            r2 = tools.REGISTRY["type_text"]["handler"](self.ctx, {"text": "Hello 世界 🚀", "clear_before": True})
+            r2 = tools.REGISTRY["type_text"]["handler"](
+                self.ctx, {"text": "Hello 世界 🚀", "clear_before": True}
+            )
             self.assertTrue(r2["ok"])
             self.assertTrue(r2.get("pasted"))
             self.assertIn(("clip_set", "Hello 世界 🚀"), calls)
@@ -340,7 +389,10 @@ class ComputerUseToolTests(unittest.TestCase):
     def test_kwin_window_to_screen_px_logic(self):
         fake_win = {
             "ok": True,
-            "window": {"uuid": "win-123", "caption": "Editor", "cls": "code", "x": 100, "y": 200, "w": 1000, "h": 800}
+            "window": {
+                "uuid": "win-123", "caption": "Editor", "cls": "code",
+                "x": 100, "y": 200, "w": 1000, "h": 800,
+            }
         }
         with mock.patch.object(kwin, "active_window", return_value=fake_win):
             # Test pixel offset
@@ -357,42 +409,59 @@ class ComputerUseToolTests(unittest.TestCase):
     def test_find_text_tool(self):
         # Grant check
         no_grant_ctx = DummyContext(self.tmp, grants={"screen": False})
-        r_nogrant = tools.REGISTRY["find_text"]["handler"](no_grant_ctx, {"query": "Save"})
+        r_nogrant = tools.REGISTRY["find_tex"
+            "t"]["handler"](no_grant_ctx, {"query": "Save"})
         self.assertFalse(r_nogrant["ok"])
         self.assertEqual(r_nogrant["error"], "screen grant disabled")
 
         fake_res = {
             "ok": True,
             "count": 1,
-            "matches": [{"text": "Save", "x": 100, "y": 200, "w": 50, "h": 20, "center": [125, 210], "confidence": 95.0}]
+            "matches": [
+                {
+                    "text": "Save", "x": 100, "y": 200, "w": 50, "h": 20,
+                    "center": [125, 210], "confidence": 95.0,
+                },
+            ]
         }
         with mock.patch.object(kwin, "find_text", return_value=fake_res) as mock_find:
-            r = tools.REGISTRY["find_text"]["handler"](self.ctx, {"query": "Save", "exact": True, "min_confidence": 80.0})
+            r = tools.REGISTRY["find_text"]["handler"](
+                self.ctx, {"query": "Save", "exact": True, "min_confidence": 80.0}
+            )
             self.assertTrue(r["ok"])
             self.assertEqual(r["count"], 1)
-            mock_find.assert_called_once_with(query="Save", region=None, exact=True, min_confidence=80.0)
+            mock_find.assert_called_once_with(query="Sav"
+                "e", region=None, exact=True, min_confidence=80.0)
 
     def test_click_text_tool(self):
         # Grant check
         no_grant_ctx = DummyContext(self.tmp, grants={"input": False})
-        r_nogrant = tools.REGISTRY["click_text"]["handler"](no_grant_ctx, {"text": "Save"})
+        r_nogrant = tools.REGISTRY["click_tex"
+            "t"]["handler"](no_grant_ctx, {"text": "Save"})
         self.assertFalse(r_nogrant["ok"])
         self.assertEqual(r_nogrant["error"], "input grant disabled")
 
-        fake_res = {"ok": True, "matched": "Save", "x": 125, "y": 210, "clicks": 1, "button": "left"}
+        fake_res = {"ok": True, "matche"
+            "d": "Save", "x": 125, "y": 210, "clicks": 1, "button": "left"}
         with mock.patch.object(kwin, "click_text", return_value=fake_res) as mock_click:
-            r = tools.REGISTRY["click_text"]["handler"](self.ctx, {"text": "Save", "clicks": 1, "button": "left"})
+            r = tools.REGISTRY["click_text"]["handler"](
+                self.ctx, {"text": "Save", "clicks": 1, "button": "left"}
+            )
             self.assertTrue(r["ok"])
             self.assertEqual(r["matched"], "Save")
             mock_click.assert_called_once_with(
-                query="Save", clicks=1, button="left", modifiers=None, region=None, exact=False, min_confidence=40.0, index=0
+                query="Save", clicks=1, button="left", modifiers=None,
+                region=None, exact=False, min_confidence=40.0, index=0,
             )
 
-        with mock.patch.object(kwin, "click_text", return_value=fake_res) as mock_click_idx:
-            r2 = tools.REGISTRY["click_text"]["handler"](self.ctx, {"text": "Save", "index": 2})
+        with mock.patch.object(kwin, "click_tex"
+            "t", return_value=fake_res) as mock_click_idx:
+            r2 = tools.REGISTRY["click_tex"
+                "t"]["handler"](self.ctx, {"text": "Save", "index": 2})
             self.assertTrue(r2["ok"])
             mock_click_idx.assert_called_once_with(
-                query="Save", clicks=1, button="left", modifiers=None, region=None, exact=False, min_confidence=40.0, index=2
+                query="Save", clicks=1, button="left", modifiers=None,
+                region=None, exact=False, min_confidence=40.0, index=2,
             )
 
     def test_click_element_tool(self):
@@ -402,9 +471,12 @@ class ComputerUseToolTests(unittest.TestCase):
         self.assertFalse(r_nogrant["ok"])
         self.assertEqual(r_nogrant["error"], "input grant disabled")
 
-        fake_res = {"ok": True, "id": 1, "x": 100, "y": 150, "element": {"id": 1, "text": "Submit"}}
-        with mock.patch.object(kwin, "click_element", return_value=fake_res) as mock_click:
-            r = tools.REGISTRY["click_element"]["handler"](self.ctx, {"id": 1, "button": "right", "clicks": 2})
+        fake_res = {"ok": True, "id": 1, "x": 100, "y": 150, "elemen"
+            "t": {"id": 1, "text": "Submit"}}
+        with mock.patch.object(kwin, "click_elemen"
+            "t", return_value=fake_res) as mock_click:
+            r = tools.REGISTRY["click_elemen"
+                "t"]["handler"](self.ctx, {"id": 1, "button": "right", "clicks": 2})
             self.assertTrue(r["ok"])
             self.assertEqual(r["id"], 1)
             mock_click.assert_called_once_with(
@@ -413,7 +485,8 @@ class ComputerUseToolTests(unittest.TestCase):
 
     def test_desktop_actions_dispatches_click_element_and_gesture_relative(self):
         def fake_click_element(element_id, button="left", clicks=1, modifiers=None):
-            return {"ok": True, "id": element_id, "x": 50, "y": 60, "element": {"id": element_id, "text": "OK"}}
+            return {"ok": True, "id": element_id, "x": 50, "y": 60, "elemen"
+                "t": {"id": element_id, "text": "OK"}}
 
         def fake_drag_path(points, button="left", duration=0.5, smooth=True):
             return {"ok": True, "points": points, "button": button}
@@ -426,7 +499,8 @@ class ComputerUseToolTests(unittest.TestCase):
              mock.patch.object(kwin, "window_to_screen_px", fake_win_trans):
             actions = [
                 {"action": "click_element", "id": 4, "button": "left"},
-                {"action": "gesture", "points": [[10, 20], [30, 40]], "relative_to": "active_window"}
+                {"action": "gesture", "points": [[10, 20], [30, 40]], "relative_to": "a"
+                    "ctive_window"}
             ]
             r = tools.REGISTRY["desktop_actions"]["handler"](self.ctx, {
                 "actions": actions,
@@ -441,7 +515,7 @@ class ComputerUseToolTests(unittest.TestCase):
 
         res2 = r["results"][1]
         self.assertEqual(res2["action"], "gesture")
-        # Points should have been translated by [100, 200]: (10+100, 20+200) -> [110, 220]
+        # Points were translated by [100, 200]: (10+100, 20+200) -> [110, 220]
         self.assertEqual(res2["points"], [[110, 220], [130, 240]])
 
     def test_desktop_actions_move_window_and_clipboard_and_wait_change(self):
@@ -467,10 +541,14 @@ class ComputerUseToolTests(unittest.TestCase):
              mock.patch.object(kwin, "clipboard_get", fake_clip_get), \
              mock.patch.object(kwin, "wait_for_change", fake_wait_change):
             actions = [
-                {"action": "move_window", "uuid": "win-123", "x": 50, "y": 100, "width": 800, "height": 600},
+                {
+                    "action": "move_window", "uuid": "win-123",
+                    "x": 50, "y": 100, "width": 800, "height": 600,
+                },
                 {"action": "clipboard_copy", "text": "sample text"},
                 {"action": "clipboard_paste"},
-                {"action": "wait_for_change", "timeout": 1.5, "region": [10, 10, 200, 200]},
+                {"action": "wait_for_chang"
+                    "e", "timeout": 1.5, "region": [10, 10, 200, 200]},
             ]
             r = tools.REGISTRY["desktop_actions"]["handler"](self.ctx, {
                 "actions": actions,
@@ -484,7 +562,9 @@ class ComputerUseToolTests(unittest.TestCase):
         self.assertEqual(calls[2], ("clipboard_get",))
         self.assertEqual(calls[3], ("wait_for_change", 1.5, [10, 10, 200, 200]))
 
-    def test_desktop_actions_move_window_resolves_relative_to_and_uses_translated_coords(self):
+    def test_desktop_actions_move_window_resolves_relative_to_translated_coords(
+        self,
+    ):
         # No 'uuid'/'id' — only 'relative_to'. This used to be passed straight
         # to kwin.move_window as a literal uuid (kwin.move_window("active", ...)),
         # which always failed with "window not found: active" since the KWin
@@ -498,9 +578,14 @@ class ComputerUseToolTests(unittest.TestCase):
             calls.append((uuid, x, y, w, h))
             return {"ok": True}
 
-        with mock.patch.object(kwin, "active_window", return_value={"ok": True, "window": active_win}), \
-             mock.patch.object(kwin, "move_window", fake_move_win):
-            actions = [{"action": "move_window", "relative_to": "active", "x": 20, "y": 30}]
+        with (
+            mock.patch.object(
+                kwin, "active_window", return_value={"ok": True, "window": active_win}
+            ),
+            mock.patch.object(kwin, "move_window", fake_move_win),
+        ):
+            actions = [{"action": "move_windo"
+                "w", "relative_to": "active", "x": 20, "y": 30}]
             r = tools.REGISTRY["desktop_actions"]["handler"](self.ctx, {
                 "actions": actions, "capture_after": False})
 
@@ -515,7 +600,8 @@ class ComputerUseToolTests(unittest.TestCase):
         # coordinate translation that runs for every action type fails first
         # (a different, already-correct error path) — this isolates the
         # move_window/resize_window branch's own wid-resolution fallback.
-        with mock.patch.object(kwin, "list_windows", return_value={"ok": True, "windows": []}):
+        with mock.patch.object(kwin, "list_window"
+            "s", return_value={"ok": True, "windows": []}):
             actions = [{"action": "move_window", "relative_to": "no-such-window"}]
             r = tools.REGISTRY["desktop_actions"]["handler"](self.ctx, {
                 "actions": actions, "capture_after": False})
@@ -524,8 +610,10 @@ class ComputerUseToolTests(unittest.TestCase):
 
         # With x/y present, the earlier shared translation catches the same
         # unresolvable identifier and reports it just as clearly.
-        with mock.patch.object(kwin, "list_windows", return_value={"ok": True, "windows": []}):
-            actions = [{"action": "move_window", "relative_to": "no-such-window", "x": 0, "y": 0}]
+        with mock.patch.object(kwin, "list_window"
+            "s", return_value={"ok": True, "windows": []}):
+            actions = [{"action": "move_window", "relative_to": "no-such-windo"
+                "w", "x": 0, "y": 0}]
             r2 = tools.REGISTRY["desktop_actions"]["handler"](self.ctx, {
                 "actions": actions, "capture_after": False})
         self.assertFalse(r2["ok"])
@@ -539,7 +627,9 @@ class ComputerUseToolTests(unittest.TestCase):
 
         fake_info = {
             "ok": True,
-            "displays": [{"name": "DP-1", "primary": True, "width": 3840, "height": 2160}],
+            "displays": [
+                {"name": "DP-1", "primary": True, "width": 3840, "height": 2160},
+            ],
             "count": 1,
             "current_size": [3840, 2160]
         }
@@ -551,26 +641,34 @@ class ComputerUseToolTests(unittest.TestCase):
 
     def test_mouse_gesture_tool(self):
         no_grant_ctx = DummyContext(self.tmp, grants={"input": False})
-        r_nogrant = tools.REGISTRY["mouse_gesture"]["handler"](no_grant_ctx, {"points": [[0, 0], [10, 10]]})
+        r_nogrant = tools.REGISTRY["mouse_gestur"
+            "e"]["handler"](no_grant_ctx, {"points": [[0, 0], [10, 10]]})
         self.assertFalse(r_nogrant["ok"])
         self.assertEqual(r_nogrant["error"], "input grant disabled")
 
-        fake_res = {"ok": True, "button": "left", "points_count": 3, "start": [10, 10], "end": [100, 100]}
-        with mock.patch.object(kwin, "drag_path", return_value=fake_res) as mock_drag_path:
+        fake_res = {"ok": True, "button": "left", "points_coun"
+            "t": 3, "start": [10, 10], "end": [100, 100]}
+        with mock.patch.object(kwin, "drag_pat"
+            "h", return_value=fake_res) as mock_drag_path:
             pts = [[10, 10], [50, 50], [100, 100]]
-            r = tools.REGISTRY["mouse_gesture"]["handler"](self.ctx, {"points": pts, "duration": 0.3})
+            r = tools.REGISTRY["mouse_gestur"
+                "e"]["handler"](self.ctx, {"points": pts, "duration": 0.3})
             self.assertTrue(r["ok"])
             self.assertEqual(r["points_count"], 3)
-            mock_drag_path.assert_called_once_with(points=pts, button="left", duration=0.3, smooth=True)
+            mock_drag_path.assert_called_once_with(points=pts, button="lef"
+                "t", duration=0.3, smooth=True)
 
     def test_assert_region_changed_tool(self):
         no_grant_ctx = DummyContext(self.tmp, grants={"screen": False})
-        r_nogrant = tools.REGISTRY["assert_region_changed"]["handler"](no_grant_ctx, {"before_path": "/tmp/nonexistent.png"})
+        r_nogrant = tools.REGISTRY["assert_region_change"
+            "d"]["handler"](no_grant_ctx, {"before_path": "/tmp/nonexistent.png"})
         self.assertFalse(r_nogrant["ok"])
         self.assertEqual(r_nogrant["error"], "screen grant disabled")
 
         # Missing file error
-        r_missing = tools.REGISTRY["assert_region_changed"]["handler"](self.ctx, {"before_path": str(self.tmp / "nonexistent.png")})
+        r_missing = tools.REGISTRY["assert_region_changed"]["handler"](
+            self.ctx, {"before_path": str(self.tmp / "nonexistent.png")}
+        )
         self.assertFalse(r_missing["ok"])
         self.assertIn("not found", r_missing["error"])
 
@@ -600,7 +698,8 @@ class ComputerUseToolTests(unittest.TestCase):
 
     def test_focus_or_launch_tool(self):
         no_grant_ctx = DummyContext(self.tmp, grants={"input": False})
-        r_nogrant = tools.REGISTRY["focus_or_launch"]["handler"](no_grant_ctx, {"app_name": "dolphin"})
+        r_nogrant = tools.REGISTRY["focus_or_launc"
+            "h"]["handler"](no_grant_ctx, {"app_name": "dolphin"})
         self.assertFalse(r_nogrant["ok"])
         self.assertEqual(r_nogrant["error"], "input grant disabled")
 
@@ -609,11 +708,16 @@ class ComputerUseToolTests(unittest.TestCase):
             "action": "focused_existing",
             "window": {"uuid": "win-dolphin-1", "caption": "Dolphin", "cls": "dolphin"}
         }
-        with mock.patch.object(kwin, "focus_or_launch", return_value=fake_res) as mock_fol:
-            r = tools.REGISTRY["focus_or_launch"]["handler"](self.ctx, {"app_name": "dolphin", "command": "dolphin ~"})
+        with mock.patch.object(kwin, "focus_or_launc"
+            "h", return_value=fake_res) as mock_fol:
+            r = tools.REGISTRY["focus_or_launch"]["handler"](
+                self.ctx, {"app_name": "dolphin", "command": "dolphin ~"}
+            )
             self.assertTrue(r["ok"])
             self.assertEqual(r["action"], "focused_existing")
-            mock_fol.assert_called_once_with(app_name="dolphin", timeout=6.0, command="dolphin ~")
+            mock_fol.assert_called_once_with(
+                app_name="dolphin", timeout=6.0, command="dolphin ~"
+            )
 
     def test_focus_or_launch_resolves_command_from_desktop_entry_by_default(self):
         # No 'command' given, and the app's real id ('com.discordapp.Discord')
@@ -626,11 +730,14 @@ class ComputerUseToolTests(unittest.TestCase):
                  "exec": "discord %U", "terminal": False, "comment": ""}
         with mock.patch.object(tools, "_desktop_entries", return_value=[entry]), \
              mock.patch.object(kwin, "focus_or_launch",
-                               return_value={"ok": True, "action": "launched_and_focused",
+                               return_value={"ok": True, "action": "launched_and_focuse"
+                                   "d",
                                             "window": {"uuid": "w1"}}) as mock_fol:
-            r = tools.REGISTRY["focus_or_launch"]["handler"](self.ctx, {"app_name": "discord"})
+            r = tools.REGISTRY["focus_or_launc"
+                "h"]["handler"](self.ctx, {"app_name": "discord"})
         self.assertTrue(r["ok"])
-        mock_fol.assert_called_once_with(app_name="discord", timeout=6.0, command="discord")
+        mock_fol.assert_called_once_with(app_name="discor"
+            "d", timeout=6.0, command="discord")
 
     def test_focus_or_launch_falls_back_to_none_when_no_desktop_entry_matches(self):
         # A plain CLI tool with no .desktop file at all must still reach
@@ -638,7 +745,8 @@ class ComputerUseToolTests(unittest.TestCase):
         # not an empty string that would short-circuit differently.
         with mock.patch.object(tools, "_desktop_entries", return_value=[]), \
              mock.patch.object(kwin, "focus_or_launch",
-                               return_value={"ok": True, "action": "launched_and_focused",
+                               return_value={"ok": True, "action": "launched_and_focuse"
+                                   "d",
                                             "window": {"uuid": "w1"}}) as mock_fol:
             tools.REGISTRY["focus_or_launch"]["handler"](self.ctx, {"app_name": "htop"})
         mock_fol.assert_called_once_with(app_name="htop", timeout=6.0, command=None)
@@ -648,7 +756,8 @@ class ComputerUseToolTests(unittest.TestCase):
                  "exec": "discord %U", "terminal": False, "comment": ""}
         with mock.patch.object(tools, "_desktop_entries", return_value=[entry]), \
              mock.patch.object(kwin, "focus_or_launch",
-                               return_value={"ok": True, "window": {"uuid": "w1"}}) as mock_fol:
+                               return_value={"ok": True, "windo"
+                                   "w": {"uuid": "w1"}}) as mock_fol:
             actions = [{"action": "focus_or_launch", "app_name": "discord"}]
             r = tools.REGISTRY["desktop_actions"]["handler"](self.ctx, {
                 "actions": actions, "capture_after": False})
@@ -659,7 +768,8 @@ class ComputerUseToolTests(unittest.TestCase):
         fake_entries = [
             {"name": "Kate", "id": "org.kde.kate", "file": "/x", "exec": "kate %U",
              "terminal": False, "comment": "Advanced Text Editor"},
-            {"name": "Dolphin", "id": "org.kde.dolphin", "file": "/y", "exec": "dolphin %U",
+            {"name": "Dolphin", "id": "org.kde.dolphi"
+                "n", "file": "/y", "exec": "dolphin %U",
              "terminal": False, "comment": "File Manager"},
         ]
         with mock.patch.object(tools, "_desktop_entries", return_value=fake_entries):
@@ -668,36 +778,42 @@ class ComputerUseToolTests(unittest.TestCase):
             self.assertEqual(r_all["count"], 2)
             # ...but now also on the .desktop entry's Comment=, so a query
             # that doesn't appear in any app's name still finds the right one.
-            r = tools.REGISTRY["list_apps"]["handler"](self.ctx, {"query": "text editor"})
+            r = tools.REGISTRY["list_apps"]["handler"](self.ctx, {"query": "text "
+                "editor"})
             self.assertEqual(r["count"], 1)
             self.assertEqual(r["apps"][0]["id"], "org.kde.kate")
             self.assertEqual(r["apps"][0]["comment"], "Advanced Text Editor")
 
     def test_launch_app_resolves_flatpak_style_id_by_fuzzy_name(self):
-        entry = {"name": "Discord", "id": "com.discordapp.Discord", "file": "/x/discord.desktop",
+        entry = {"name": "Discord", "id": "com.discordapp.Discor"
+            "d", "file": "/x/discord.desktop",
                  "exec": "discord %U", "terminal": False, "comment": ""}
         fake_window = {"uuid": "w1", "cls": "discord", "caption": "Discord"}
         with mock.patch.object(tools, "_desktop_entries", return_value=[entry]), \
              mock.patch("shutil.which", return_value=None), \
              mock.patch("subprocess.Popen") as mock_popen, \
-             mock.patch.object(kwin, "list_windows", return_value={"ok": True, "windows": [fake_window]}):
+             mock.patch.object(kwin, "list_window"
+                 "s", return_value={"ok": True, "windows": [fake_window]}):
             r = tools.REGISTRY["launch_app"]["handler"](self.ctx, {"name": "discord"})
         self.assertTrue(r["ok"], r)
         self.assertEqual(r["id"], "com.discordapp.Discord")
         self.assertEqual(r["via"], "exec")
         mock_popen.assert_called_once()
-        self.assertEqual(mock_popen.call_args[0][0], ["setsid", "-f", "sh", "-c", "discord"])
+        self.assertEqual(mock_popen.call_args[0][0], ["setsid", "-f", "sh", "-c", "disc"
+            "ord"])
 
     def test_launch_app_no_match_reports_hint(self):
         with mock.patch.object(tools, "_desktop_entries", return_value=[]):
-            r = tools.REGISTRY["launch_app"]["handler"](self.ctx, {"name": "nonexistent-app-xyz"})
+            r = tools.REGISTRY["launch_app"]["handler"](self.ctx, {"name": "nonexistent"
+                "-app-xyz"})
         self.assertFalse(r["ok"])
         self.assertIn("hint", r)
 
     def test_desktop_actions_dispatches_new_actions(self):
         actions = [
             {"action": "click_text", "text": "OK", "button": "left"},
-            {"action": "gesture", "points": [[10, 10], [50, 50], [100, 100]], "duration": 0.2},
+            {"action": "gesture", "points": [[10, 10], [50, 50], [100, 100]], "duratio"
+                "n": 0.2},
             {"action": "focus_or_launch", "app_name": "dolphin"},
         ]
         fake_click_t = {"ok": True, "matched": "OK", "x": 100, "y": 100}
@@ -705,11 +821,14 @@ class ComputerUseToolTests(unittest.TestCase):
         fake_fol = {"ok": True, "action": "focused_existing", "window": {"uuid": "w1"}}
         fake_shot = {"ok": True, "path": "/tmp/shot.png"}
 
-        with mock.patch.object(kwin, "click_text", return_value=fake_click_t) as m_ct, \
-             mock.patch.object(kwin, "drag_path", return_value=fake_gesture) as m_dp, \
-             mock.patch.object(kwin, "focus_or_launch", return_value=fake_fol) as m_fol, \
-             mock.patch.object(kwin, "screenshot", return_value=fake_shot):
-            r = tools.REGISTRY["desktop_actions"]["handler"](self.ctx, {"actions": actions})
+        with (
+            mock.patch.object(kwin, "click_text", return_value=fake_click_t) as m_ct,
+            mock.patch.object(kwin, "drag_path", return_value=fake_gesture) as m_dp,
+            mock.patch.object(kwin, "focus_or_launch", return_value=fake_fol) as m_fol,
+            mock.patch.object(kwin, "screenshot", return_value=fake_shot),
+        ):
+            r = tools.REGISTRY["desktop_action"
+                "s"]["handler"](self.ctx, {"actions": actions})
             self.assertTrue(r["ok"])
             self.assertEqual(r["executed"], 3)
             m_ct.assert_called_once()
@@ -745,7 +864,10 @@ class ComputerUseToolTests(unittest.TestCase):
                     "primary": True,
                     "enabled": True,
                     "pos": {"x": 0, "y": 0},
-                    "currentMode": {"size": {"width": 3840, "height": 2160}, "refreshRate": 60000},
+                    "currentMode": {
+                        "size": {"width": 3840, "height": 2160},
+                        "refreshRate": 60000,
+                    },
                     "scale": 1.0
                 }
             ]
@@ -764,9 +886,11 @@ class ComputerUseToolTests(unittest.TestCase):
 
     def test_kwin_compare_regions_parsing(self):
         mock_proc = mock.Mock(returncode=1, stdout="", stderr="1200 (0.0240)")
-        with mock.patch("shutil.which", return_value="/usr/bin/compare"), \
-             mock.patch.object(kwin, "_read_image_dimensions", return_value=(1000, 500)), \
-             mock.patch("subprocess.run", return_value=mock_proc):
+        with (
+            mock.patch("shutil.which", return_value="/usr/bin/compare"),
+            mock.patch.object(kwin, "_read_image_dimensions", return_value=(1000, 500)),
+            mock.patch("subprocess.run", return_value=mock_proc),
+        ):
             p1 = self.tmp / "f1.png"
             p2 = self.tmp / "f2.png"
             p1.write_bytes(b"1")
@@ -784,9 +908,18 @@ class ComputerUseToolTests(unittest.TestCase):
                 click_codes.append(cmd[1])
             return {"ok": True}
 
-        with mock.patch.object(kwin, "_place_pointer", side_effect=[{"ok": True, "x": 10, "y": 10}, Exception("unexpected error")]), \
-             mock.patch.object(kwin, "_ydotool", side_effect=fake_ydotool), \
-             mock.patch("time.sleep"):
+        with (
+            mock.patch.object(
+                kwin,
+                "_place_pointer",
+                side_effect=[
+                    {"ok": True, "x": 10, "y": 10},
+                    Exception("unexpected error"),
+                ],
+            ),
+            mock.patch.object(kwin, "_ydotool", side_effect=fake_ydotool),
+            mock.patch("time.sleep"),
+        ):
             try:
                 kwin.drag_path([(10, 10), (100, 100)])
             except Exception:
@@ -849,18 +982,22 @@ class ImagePayloadAndPlaybookTests(unittest.TestCase):
             "ok": True,
             "results": [
                 {"action": "click", "ok": True, "x": 100, "y": 200,
-                 "requested": [100, 200], "residual": 0, "corrections": 0, "verified": True},
+                 "requested": [100, 200], "residual": 0, "correction"
+                     "s": 0, "verified": True},
                 {"action": "type", "ok": True, "text_preview": "foo"},
                 {"action": "click_element", "ok": True, "id": 2, "text": "Save",
                  "x": 45, "y": 95, "box": [30, 85, 30, 20],
                  "element": {"id": 2, "text": "Save"}},
                 {"action": "key", "ok": True, "key": "ctrl+s"},
-                {"action": "drag", "ok": True, "start": [10, 20], "end": [30, 40], "verified": True},
+                {"action": "drag", "ok": True, "start": [10, 20], "end": [30, 40], "ver"
+                    "ified": True},
                 {"action": "scroll", "ok": True, "direction": "down", "amount": 3},
                 {"action": "activate", "ok": True, "result": "activated"},
-                {"action": "focus_or_launch", "ok": True, "action_kind": "launched_and_focused",
+                {"action": "focus_or_launch", "ok": True, "action_kind": "launched_and_"
+                    "focused",
                  "window": {"uuid": "1", "caption": "Dolphin", "cls": "dolphin"}},
-                {"action": "clipboard_paste", "ok": True, "text": "Hello clipboard", "truncated": False},
+                {"action": "clipboard_past"
+                    "e", "ok": True, "text": "Hello clipboard", "truncated": False},
                 {"action": "wait", "ok": True, "duration": 0.5},
             ],
             "screenshot_path": "/tmp/test.png", "path": "/tmp/test.png",
@@ -881,7 +1018,8 @@ class ImagePayloadAndPlaybookTests(unittest.TestCase):
         self.assertIn("screenshot: /tmp/test.png", text)
 
         # A failed screenshot capture should surface why, not disappear.
-        d_fail = {"ok": True, "results": [{"action": "click", "ok": True, "x": 1, "y": 1}],
+        d_fail = {"ok": True, "result"
+            "s": [{"action": "click", "ok": True, "x": 1, "y": 1}],
                   "screenshot_error": "screen grant disabled"}
         detail_fail = argusd.tool_detail("desktop_actions", d_fail)
         self.assertIn("screenshot failed: screen grant disabled", detail_fail["text"])
@@ -924,7 +1062,12 @@ class ImagePayloadAndPlaybookTests(unittest.TestCase):
         # list_displays
         ld_res = {
             "ok": True,
-            "displays": [{"name": "eDP-1", "width": 1920, "height": 1080, "x": 0, "y": 0, "scale": 1.0, "refresh_rate": 60}]
+            "displays": [
+                {
+                    "name": "eDP-1", "width": 1920, "height": 1080,
+                    "x": 0, "y": 0, "scale": 1.0, "refresh_rate": 60,
+                },
+            ]
         }
         detail_ld = argusd.tool_detail("list_displays", ld_res)
         self.assertIn("Displays (1)", detail_ld["text"])
@@ -966,10 +1109,13 @@ class ImagePayloadAndPlaybookTests(unittest.TestCase):
         before.write_bytes(b"\x89PNG\r\n\x1a\n")
         with mock.patch.object(kwin, "screenshot", return_value={"ok": True}), \
              mock.patch.object(kwin, "compare_regions",
-                               return_value={"ok": True, "diff_ratio": 0.02, "diff_pixels": 200,
-                                            "total_pixels": 10000, "diff_image_path": None}):
+                               return_value={"ok": True, "diff_ratio": 0.02, "diff_pixe"
+                                   "ls": 200,
+                                            "total_pixels": 10000, "diff_image_pat"
+                                                "h": None}):
             res = tools.REGISTRY["assert_region_changed"]["handler"](
-                DummyContext(tmp), {"before_path": str(before), "threshold_ratio": 0.01})
+                DummyContext(tmp), {"before_path": str(before), "threshold_rati"
+                    "o": 0.01})
         self.assertTrue(res["ok"])
         self.assertAlmostEqual(res["diff_percent"], 2.0)
         self.assertAlmostEqual(res["threshold_percent"], 1.0)

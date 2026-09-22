@@ -89,7 +89,8 @@ def declared_and_answered(db, session):
     """
     import json as _json
     declared, answered = [], []
-    for kind, payload in db.execute("SELECT kind,payload FROM events WHERE session=? ORDER BY id",
+    for kind, payload in db.execute("SELECT kind,payload FROM events WHERE session=? "
+        "ORDER BY id",
                                     (session,)):
         body = _json.loads(payload)
         if kind == "assistant":

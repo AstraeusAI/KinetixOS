@@ -39,7 +39,9 @@ class SandboxTests(unittest.TestCase):
         self.assertFalse(result["ok"])
         self.assertNotIn("secret-payload", result["stdout"])
 
-    def test_home_env_var_matches_the_real_bound_home_and_keys_are_not_in_the_environment(self):
+    def test_home_env_var_matches_the_bound_home_and_keys_are_not_in_the_environment(
+        self,
+    ):
         """$HOME inside the sandbox must agree with the path that is
         actually bound (see build_argv()'s own comment on this) — a real
         regression once, caught live: $HOME pointed at a leftover synthetic
@@ -66,7 +68,8 @@ class SandboxTests(unittest.TestCase):
         self.assertFalse(denied["ok"])
         self.assertEqual("before\n", (self.ws / "f.txt").read_text())
 
-        allowed = sandbox.run("echo x > f.txt", self.ws, write_workspace=True, timeout=60)
+        allowed = sandbox.run("echo x > "
+            "f.txt", self.ws, write_workspace=True, timeout=60)
         self.assertTrue(allowed["ok"], allowed)
         self.assertEqual("x\n", (self.ws / "f.txt").read_text())
 
@@ -76,7 +79,8 @@ class SandboxTests(unittest.TestCase):
         elapsed = time.time() - started
         self.assertFalse(result["ok"])
         self.assertIn("timed out after 2s", result["error"])
-        self.assertLess(elapsed, 15, "the timeout path waited for the command instead of killing it")
+        self.assertLess(elapsed, 15, "the timeout path waited for the command instead "
+            "of killing it")
 
 
 @unittest.skipUnless(sandbox.have_bwrap(), "bwrap is not installed")
@@ -89,7 +93,8 @@ class SandboxHomeAccessTests(unittest.TestCase):
     actual user's real home directory."""
 
     def setUp(self):
-        self.fake_home = support.make_workspace("sandbox-fake-home-" + self._testMethodName)
+        self.fake_home = support.make_workspace("sandbox-fake-home"
+            "-" + self._testMethodName)
         patch = mock.patch.object(Path, "home", return_value=self.fake_home)
         patch.start()
         self.addCleanup(patch.stop)
@@ -106,7 +111,8 @@ class SandboxHomeAccessTests(unittest.TestCase):
 
     def test_a_file_elsewhere_under_home_is_writable_by_default(self):
         target = support.write(self.fake_home / "notes" / "todo.txt", "before\n")
-        result = sandbox.run(f"echo after > {target}", self.ws, write_workspace=True, timeout=60)
+        result = sandbox.run(f"echo after > "
+            f"{target}", self.ws, write_workspace=True, timeout=60)
         self.assertTrue(result["ok"], result)
         self.assertEqual("after\n", target.read_text())
 
