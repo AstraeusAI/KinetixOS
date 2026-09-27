@@ -49,3 +49,12 @@ class CiPublishTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class IsoBuildPacmanConfTests(unittest.TestCase):
+    def test_build_time_pacman_conf_drops_the_image_only_kinetix_repo(self):
+        # the [kinetix] mirrorlist exists only inside the image; the build host
+        # cannot parse a pacman.conf that includes it (build failed on this)
+        build = (ROOT / "distro/build-iso.sh").read_text()
+        self.assertIn(r"/^\[kinetix\]/{skip=1; next}", build)
+        self.assertIn('"$PROFILE/airootfs/usr/share/kinetix/config/pacman.conf"', build)

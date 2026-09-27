@@ -47,7 +47,14 @@ WORK="$STAGE/work"
 mkdir -p "$PROFILE" "$WORK" "$OUTPUT_DIR"
 cp -a "$PROFILE_SOURCE/." "$PROFILE/"
 install -m 0644 "$ROOT/distro/archiso/profiledef.sh" "$PROFILE/profiledef.sh"
-install -m 0644 "$ROOT/distro/archiso/pacman.conf" "$PROFILE/pacman.conf"
+# Build-time pacman.conf: the same file minus [kinetix]. That repo's mirrorlist
+# only exists inside the image (/etc/pacman.d/kinetix-mirrorlist), so on the
+# build host pacman cannot parse it, and nothing the ISO installs comes from
+# it anyway. The image keeps the full file (config/pacman.conf below, put in
+# place by the 99-kinetix-pacman-config hook).
+awk '/^\[kinetix\]/{skip=1; next} /^\[/{skip=0} !skip' \
+    "$ROOT/distro/archiso/pacman.conf" > "$PROFILE/pacman.conf"
+chmod 0644 "$PROFILE/pacman.conf"
 install -d "$PROFILE/efiboot/loader/entries" "$PROFILE/syslinux"
 install -m 0644 "$ROOT/distro/archiso/efiboot/loader/loader.conf" \
     "$PROFILE/efiboot/loader/loader.conf"
