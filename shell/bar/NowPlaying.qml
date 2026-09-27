@@ -64,20 +64,20 @@ BarBox {
                 }
             }
 
-            Text {
+            KxIcon {
                 visible: !root.player || root.player.playbackState !== MprisPlaybackState.Playing
-                text: "♫"
+                name: "music"
+                size: 13
                 color: Theme.crimsonText
-                font.pixelSize: 11
                 anchors.centerIn: parent
             }
         }
 
         // Previous
-        Text {
-            text: "⏮"
+        KxIcon {
+            name: "prev"
+            size: 12
             color: maP.containsMouse ? Theme.text : Theme.textFaint
-            font.pixelSize: 11
             scale: maP.pressed ? 0.88 : (maP.containsMouse ? 1.15 : 1.0)
             Behavior on scale { NumberAnimation { duration: Theme.durFast; easing.type: Easing.OutCubic } }
             Behavior on color { ColorAnimation { duration: Theme.durFast } }
@@ -93,10 +93,10 @@ BarBox {
         }
 
         // Play/Pause
-        Text {
-            text: root.player && root.player.playbackState === MprisPlaybackState.Playing ? "⏸" : "▶"
+        KxIcon {
+            name: root.player && root.player.playbackState === MprisPlaybackState.Playing ? "pause" : "play"
+            size: 14
             color: maPlay.containsMouse ? Theme.text : Theme.crimsonText
-            font.pixelSize: 13
             scale: maPlay.pressed ? 0.88 : (maPlay.containsMouse ? 1.15 : 1.0)
             Behavior on scale { NumberAnimation { duration: Theme.durFast; easing.type: Easing.OutCubic } }
             Behavior on color { ColorAnimation { duration: Theme.durFast } }
@@ -142,10 +142,10 @@ BarBox {
         }
 
         // Next
-        Text {
-            text: "⏭"
+        KxIcon {
+            name: "next"
+            size: 12
             color: maN.containsMouse ? Theme.text : Theme.textFaint
-            font.pixelSize: 11
             scale: maN.pressed ? 0.88 : (maN.containsMouse ? 1.15 : 1.0)
             Behavior on scale { NumberAnimation { duration: Theme.durFast; easing.type: Easing.OutCubic } }
             Behavior on color { ColorAnimation { duration: Theme.durFast } }

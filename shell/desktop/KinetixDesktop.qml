@@ -4,8 +4,10 @@ import Quickshell.Wayland
 import "../common"
 import "../components"
 
-// Non-interactive desktop dressing inspired by the KinetixOS reference.
-// The established top bar remains its own unchanged surface above this layer.
+// Desktop layer: the KinetixOS art and typography, plus the live contents of
+// the user's desktop folder (DesktopIcons). Only the icon grid and its menu
+// take input; the rest of the surface stays click-through. The top bar,
+// dock and taskbar are their own surfaces above this layer.
 PanelWindow {
     id: root
     required property ShellScreen modelData
@@ -14,7 +16,10 @@ PanelWindow {
     anchors { top: true; right: true; bottom: true; left: true }
     color: "transparent"
     exclusionMode: ExclusionMode.Ignore
-    mask: Region {}
+    mask: Region {
+        item: icons.hitArea
+        Region { item: icons.menuBox }
+    }
 
     WlrLayershell.namespace: "kinetix:desktop-art"
     WlrLayershell.layer: WlrLayer.Bottom
@@ -177,6 +182,15 @@ PanelWindow {
                 lineHeight: 1.4
                 lineHeightMode: Text.ProportionalHeight
             }
+        }
+
+        // the desktop folder, live (created folders/files appear at once)
+        DesktopIcons {
+            id: icons
+            anchors.fill: parent
+            leftInset: Math.max(90, root.width * 0.04)
+            topInset: 250
+            bottomInset: 96
         }
     }
 }

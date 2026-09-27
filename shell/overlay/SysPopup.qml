@@ -388,6 +388,9 @@ PanelWindow {
                 Timer { id: tabRevealTimer; interval: 1; onTriggered: tabLoader.opacity = 1 }
             }
         }
+
+        // shared panel finish: rim, inner glass edge, the system's top light
+        PopupChrome { anchors.fill: parent; radius: pop.radius }
     }
 
     // ═════════════════════════════════════════════════════════════════════════

@@ -1,0 +1,208 @@
+# KinetixOS system defaults for KDE/Qt apps and KWin (a user's own
+# ~/.config/kdeglobals still wins). Colour groups = KinetixDark.colors.
+[ColorEffects:Disabled]
+Color=56,56,56
+ColorAmount=0
+ColorEffect=0
+ContrastAmount=0.65
+ContrastEffect=1
+IntensityAmount=0.1
+IntensityEffect=2
+
+[ColorEffects:Inactive]
+ChangeSelectionColor=true
+Color=112,111,110
+ColorAmount=0.025
+ColorEffect=2
+ContrastAmount=0.1
+ContrastEffect=2
+Enable=false
+IntensityAmount=0
+IntensityEffect=0
+
+[Colors:Button]
+BackgroundAlternate=26,14,19
+BackgroundNormal=34,18,24
+DecorationFocus=224,26,60
+DecorationHover=255,77,109
+ForegroundActive=61,174,233
+ForegroundInactive=168,150,154
+ForegroundLink=111,168,255
+ForegroundNegative=234,67,53
+ForegroundNeutral=251,188,4
+ForegroundNormal=240,230,231
+ForegroundPositive=52,168,83
+ForegroundVisited=180,120,255
+
+[Colors:Complementary]
+BackgroundAlternate=26,14,19
+BackgroundNormal=15,7,10
+DecorationFocus=224,26,60
+DecorationHover=255,77,109
+ForegroundActive=61,174,233
+ForegroundInactive=168,150,154
+ForegroundLink=111,168,255
+ForegroundNegative=234,67,53
+ForegroundNeutral=251,188,4
+ForegroundNormal=240,230,231
+ForegroundPositive=52,168,83
+ForegroundVisited=180,120,255
+
+[Colors:Header]
+BackgroundAlternate=20,11,15
+BackgroundNormal=24,12,17
+DecorationFocus=224,26,60
+DecorationHover=255,77,109
+ForegroundActive=61,174,233
+ForegroundInactive=168,150,154
+ForegroundLink=111,168,255
+ForegroundNegative=234,67,53
+ForegroundNeutral=251,188,4
+ForegroundNormal=240,230,231
+ForegroundPositive=52,168,83
+ForegroundVisited=180,120,255
+
+[Colors:Header][Inactive]
+BackgroundAlternate=20,11,15
+BackgroundNormal=15,7,10
+DecorationFocus=224,26,60
+DecorationHover=255,77,109
+ForegroundActive=61,174,233
+ForegroundInactive=168,150,154
+ForegroundLink=111,168,255
+ForegroundNegative=234,67,53
+ForegroundNeutral=251,188,4
+ForegroundNormal=240,230,231
+ForegroundPositive=52,168,83
+ForegroundVisited=180,120,255
+
+[Colors:Selection]
+BackgroundAlternate=160,18,43
+BackgroundNormal=224,26,60
+DecorationFocus=224,26,60
+DecorationHover=255,77,109
+ForegroundActive=255,255,255
+ForegroundInactive=161,169,177
+ForegroundLink=111,168,255
+ForegroundNegative=234,67,53
+ForegroundNeutral=251,188,4
+ForegroundNormal=255,255,255
+ForegroundPositive=52,168,83
+ForegroundVisited=180,120,255
+
+[Colors:Tooltip]
+BackgroundAlternate=26,14,19
+BackgroundNormal=34,18,24
+DecorationFocus=224,26,60
+DecorationHover=255,77,109
+ForegroundActive=61,174,233
+ForegroundInactive=168,150,154
+ForegroundLink=111,168,255
+ForegroundNegative=234,67,53
+ForegroundNeutral=251,188,4
+ForegroundNormal=240,230,231
+ForegroundPositive=52,168,83
+ForegroundVisited=180,120,255
+
+[Colors:View]
+BackgroundAlternate=26,14,19
+BackgroundNormal=15,7,10
+DecorationFocus=224,26,60
+DecorationHover=255,77,109
+ForegroundActive=61,174,233
+ForegroundInactive=168,150,154
+ForegroundLink=111,168,255
+ForegroundNegative=234,67,53
+ForegroundNeutral=251,188,4
+ForegroundNormal=240,230,231
+ForegroundPositive=52,168,83
+ForegroundVisited=180,120,255
+
+[Colors:Window]
+BackgroundAlternate=26,14,19
+BackgroundNormal=20,11,15
+DecorationFocus=224,26,60
+DecorationHover=255,77,109
+ForegroundActive=61,174,233
+ForegroundInactive=168,150,154
+ForegroundLink=111,168,255
+ForegroundNegative=234,67,53
+ForegroundNeutral=251,188,4
+ForegroundNormal=240,230,231
+ForegroundPositive=52,168,83
+ForegroundVisited=180,120,255
+
+[General]
+ColorScheme=KinetixDark
+Name=Kinetix Dark
+Name[ar]=نسيم داكن
+Name[az]=Breeze - Tünd
+Name[bg]=Breeze Тъмен
+Name[bs]=Breeze tamna
+Name[ca]=Brisa fosca
+Name[ca@valencia]=Brisa fosca
+Name[cs]=Breeze Tmavé
+Name[da]=Breeze Dark
+Name[de]=Breeze Dunkel
+Name[el]=Breeze σκούρο
+Name[en_GB]=Breeze Dark
+Name[eo]=Breeze Dark
+Name[es]=Brisa oscuro
+Name[et]=Breeze tume
+Name[eu]=Breeze iluna
+Name[fi]=Tumma Breeze
+Name[fr]=Brise sombre
+Name[gl]=Brisa escura
+Name[he]=בריזה כהה
+Name[hi]=ब्रीज़ गहरा
+Name[hu]=Breeze Dark
+Name[ia]=Brisa obscure
+Name[id]=Breeze Gelap
+Name[is]=Breeze dökkt
+Name[it]=Brezza scuro
+Name[ja]=Breeze Dark
+Name[ka]=Breeze მუქი
+Name[ko]=어두운 Breeze
+Name[lt]=Breeze tamsus
+Name[lv]=„Breeze“ tumšais
+Name[nb]=Breeze mørk
+Name[nl]=Breeze Dark
+Name[nn]=Breeze mørk
+Name[pa]=ਬਰੀਜ਼ ਗੂੜ੍ਹਾ
+Name[pl]=Ciemna Bryza
+Name[pt]=Brisa Escuro
+Name[pt_BR]=Breeze Dark
+Name[ro]=Briză, întunecat
+Name[ru]=Breeze, тёмный вариант
+Name[sa]=वायुः अन्धकारः
+Name[sk]=Tmavý vánok
+Name[sl]=Sapica, temna
+Name[sr]=Поветарац тамни
+Name[sr@ijekavian]=Поветарац тамни
+Name[sr@ijekavianlatin]=Povetarac tamni
+Name[sr@latin]=Povetarac tamni
+Name[sv]=Breeze mörk
+Name[ta]=கரும் பிரீஸ்
+Name[tg]=Насими торик
+Name[tr]=Esinti Koyu
+Name[uk]=Темна Breeze
+Name[zh_CN]=Breeze 微风深色
+Name[zh_TW]=Breeze Dark
+shadeSortColumn=true
+AccentColor=224,26,60
+
+[KDE]
+contrast=5
+widgetStyle=Breeze
+
+[WM]
+activeBackground=24,12,17
+activeBlend=24,12,17
+activeForeground=240,230,231
+inactiveBackground=16,8,11
+inactiveBlend=16,8,11
+inactiveForeground=168,150,154
+
+[Icons]
+Theme=breeze-dark
+

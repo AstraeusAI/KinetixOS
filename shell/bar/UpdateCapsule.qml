@@ -84,30 +84,13 @@ BarBox {
         anchors.centerIn: parent
         width: 18; height: 18
 
-        Canvas {
+        KxIcon {
             id: updateCanvas
-            anchors.fill: parent
-            property color stroke: updateCap.active ? Theme.warn
-                                    : (updateCap.hovered ? Theme.text : Theme.textDim)
-            property bool spin: updateCap.checking
-            onStrokeChanged: requestPaint()
-            onSpinChanged: requestPaint()
-            onPaint: {
-                var c = getContext("2d");
-                c.reset();
-                c.strokeStyle = stroke;
-                c.lineWidth = 1.5; c.lineCap = "round"; c.lineJoin = "round";
-                // shaft
-                c.beginPath(); c.moveTo(9, 2.6); c.lineTo(9, 11); c.stroke();
-                // arrow head
-                c.beginPath();
-                c.moveTo(5.2, 7.6); c.lineTo(9, 11.2); c.lineTo(12.8, 7.6);
-                c.stroke();
-                // tray
-                c.beginPath();
-                c.moveTo(3.4, 13.4); c.lineTo(14.6, 13.4);
-                c.stroke();
-            }
+            anchors.centerIn: parent
+            name: "download"
+            size: 18
+            color: updateCap.active ? Theme.warn
+                   : (updateCap.hovered ? Theme.text : Theme.textDim)
         }
 
         // A slow rotate while checking, so a long sync reads as work rather

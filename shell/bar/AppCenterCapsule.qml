@@ -54,11 +54,11 @@ BarBox {
                 }
             }
 
-            Text {
+            KxIcon {
                 anchors.centerIn: parent
-                text: "❖"
+                name: "apps"
+                size: 14
                 color: root.active ? Theme.crimson : (root.hovered ? Theme.text : Theme.textDim)
-                font.pixelSize: 13
                 Behavior on color { ColorAnimation { duration: Theme.durFast } }
             }
         }
@@ -152,12 +152,13 @@ BarBox {
             Behavior on color { ColorAnimation { duration: Theme.durFast } }
             Behavior on border.color { ColorAnimation { duration: Theme.durFast } }
 
-            Text {
+            KxIcon {
                 anchors.centerIn: parent
                 anchors.verticalCenterOffset: root.hovered && !root.active ? 1 : 0
-                text: "▾"
+                name: "chevron-down"
+                size: 12
+                stroke: 1.8
                 color: root.active ? Theme.crimson : (root.hovered ? Theme.text : Theme.textFaint)
-                font { family: Theme.fontUi; pixelSize: 10; bold: true }
                 rotation: root.active ? 180 : 0
                 Behavior on anchors.verticalCenterOffset { NumberAnimation { duration: Theme.durFast; easing.type: Easing.OutCubic } }
                 Behavior on rotation { NumberAnimation { duration: Theme.durFast; easing.type: Easing.OutQuint } }

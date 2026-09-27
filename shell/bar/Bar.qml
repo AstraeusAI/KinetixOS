@@ -438,13 +438,12 @@ PanelWindow {
                         color: Qt.rgba(1, 1, 1, centerPill.hovered ? 0.30 : 0.14)
                     }
 
-                    Text {
+                    KxIcon {
                         anchors.centerIn: parent
-                        text: "⌘"
+                        name: "command"
+                        size: 12
+                        stroke: 1.8
                         color: centerPill.hovered ? Theme.crimsonText : Theme.alpha(Theme.crimsonText, 0.90)
-                        font.pixelSize: 10
-                        font.family: Theme.fontMono
-                        font.weight: Font.DemiBold
                         Behavior on color { ColorAnimation { duration: Theme.durFast } }
                     }
                 }
@@ -574,36 +573,14 @@ PanelWindow {
                         ignoreUnknownSignals: true
                         function onArrived(nid, toasted) { ring.restart(); }
                     }
-                    Canvas {
+                    KxIcon {
                         id: bellCanvas
-                        anchors.fill: parent
-                        property color stroke: AgentState.notifOpen ? Theme.crimsonText
-                                                : (notifBell.hovered ? Theme.text : Theme.textDim)
-                        property bool dnd: (typeof Notif !== "undefined" && Notif) ? Notif.dnd : false
-                        onStrokeChanged: requestPaint()
-                        onDndChanged: requestPaint()
-                        onPaint: {
-                            var c = getContext("2d");
-                            c.reset();
-                            c.strokeStyle = stroke;
-                            c.lineWidth = 1.5; c.lineCap = "round"; c.lineJoin = "round";
-                            c.beginPath();
-                            c.moveTo(4.4, 8.4);
-                            c.arc(9, 8.4, 4.6, Math.PI, 2 * Math.PI, false);
-                            c.lineTo(13.6, 11.4);
-                            c.lineTo(15, 13.2);
-                            c.lineTo(3, 13.2);
-                            c.lineTo(4.4, 11.4);
-                            c.closePath();
-                            c.stroke();
-                            c.beginPath(); c.moveTo(9, 2.4); c.lineTo(9, 3.6); c.stroke();
-                            c.beginPath(); c.arc(9, 14.6, 1.5, 0, Math.PI, false); c.stroke();
-                            if (dnd) {
-                                c.strokeStyle = Theme.warn;
-                                c.lineWidth = 1.7;
-                                c.beginPath(); c.moveTo(2.4, 2.6); c.lineTo(15.6, 15.4); c.stroke();
-                            }
-                        }
+                        anchors.centerIn: parent
+                        size: 18
+                        name: (typeof Notif !== "undefined" && Notif && Notif.dnd) ? "bell-off" : "bell"
+                        accent: Theme.warn
+                        color: AgentState.notifOpen ? Theme.crimsonText
+                             : (notifBell.hovered ? Theme.text : Theme.textDim)
                     }
                 }
                 Rectangle {

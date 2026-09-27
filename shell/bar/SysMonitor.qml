@@ -512,16 +512,26 @@ BarBox {
                     anchors.verticalCenter: parent.verticalCenter
                     spacing: 3
 
-                    Text {
-                        text: "↓" + root.fmtRate(SysInfo.rx)
-                        color: SysInfo.rx > 500 ? Theme.crimsonText : (SysInfo.rx > 1 ? Theme.text : Theme.textDim)
-                        font { family: Theme.fontMono; pixelSize: 8; weight: SysInfo.rx > 50 ? Font.DemiBold : Font.Normal }
+                    Row {
+                        spacing: 1
+                        readonly property color tone: SysInfo.rx > 500 ? Theme.crimsonText : (SysInfo.rx > 1 ? Theme.text : Theme.textDim)
+                        KxIcon { name: "arrow-down"; size: 9; stroke: 2; color: parent.tone; anchors.verticalCenter: parent.verticalCenter }
+                        Text {
+                            text: root.fmtRate(SysInfo.rx)
+                            color: parent.tone
+                            font { family: Theme.fontMono; pixelSize: 8; weight: SysInfo.rx > 50 ? Font.DemiBold : Font.Normal }
+                        }
                     }
 
-                    Text {
-                        text: "↑" + root.fmtRate(SysInfo.tx)
-                        color: SysInfo.tx > 500 ? Theme.gilded : (SysInfo.tx > 1 ? Theme.text : Theme.textDim)
-                        font { family: Theme.fontMono; pixelSize: 8; weight: SysInfo.tx > 50 ? Font.DemiBold : Font.Normal }
+                    Row {
+                        spacing: 1
+                        readonly property color tone: SysInfo.tx > 500 ? Theme.gilded : (SysInfo.tx > 1 ? Theme.text : Theme.textDim)
+                        KxIcon { name: "arrow-up"; size: 9; stroke: 2; color: parent.tone; anchors.verticalCenter: parent.verticalCenter }
+                        Text {
+                            text: root.fmtRate(SysInfo.tx)
+                            color: parent.tone
+                            font { family: Theme.fontMono; pixelSize: 8; weight: SysInfo.tx > 50 ? Font.DemiBold : Font.Normal }
+                        }
                     }
                 }
             }
@@ -579,12 +589,13 @@ BarBox {
                 color: Qt.rgba(1, 1, 1, root.hovered ? 0.25 : 0.12)
             }
 
-            Text {
+            KxIcon {
                 anchors.centerIn: parent
                 anchors.verticalCenterOffset: root.hovered && !AgentState.sysOpen ? 1 : 0
-                text: "▾"
+                name: "chevron-down"
+                size: 12
+                stroke: 1.8
                 color: AgentState.sysOpen ? Theme.crimsonText : (root.hovered ? Theme.text : Theme.textFaint)
-                font { family: Theme.fontUi; pixelSize: 10; bold: true }
                 rotation: AgentState.sysOpen ? 180 : 0
                 Behavior on anchors.verticalCenterOffset { NumberAnimation { duration: Theme.durFast; easing.type: Easing.OutCubic } }
                 Behavior on rotation { NumberAnimation { duration: Theme.durFast; easing.type: Easing.OutQuint } }

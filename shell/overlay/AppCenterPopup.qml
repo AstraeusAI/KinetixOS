@@ -1342,6 +1342,9 @@ PanelWindow {
                 }
             }
         }
+
+        // shared panel finish: rim, inner glass edge, the system's top light
+        PopupChrome { anchors.fill: parent; radius: pop.radius }
     }
 
     // ── Reusable Glass ScrollBar Component ──────────────────────────────

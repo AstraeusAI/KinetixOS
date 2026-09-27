@@ -360,6 +360,9 @@ PanelWindow {
                         MouseArea { id: prevErrMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: ErrorWatch.simulate() }
                     }
                 }
+
+                // shared panel finish: rim, inner glass edge, the system's top light
+                PopupChrome { anchors.fill: parent; radius: glass.radius }
             }
         }
     }

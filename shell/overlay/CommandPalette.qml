@@ -165,6 +165,9 @@ PanelWindow {
                 }
             }
         }
+
+        // shared panel finish: rim, inner glass edge, the system's top light
+        PopupChrome { anchors.fill: parent; radius: card.radius }
     }
 
     // ── data ──────────────────────────────────────────────

@@ -1,0 +1,14 @@
+# KinetixOS Breeze decoration style (a user's ~/.config/breezerc still wins):
+# a soft, large, slightly crimson shadow and a subtle outline, matching the
+# shell's floating glass panels.
+[Common]
+OutlineIntensity=OutlineLow
+ShadowColor=12,4,7
+ShadowSize=ShadowVeryLarge
+ShadowStrength=210
+
+[Windeco]
+TitleAlignment=AlignCenterFullWidth
+DrawBorderOnMaximizedWindows=false
+DrawTitleBarSeparator=false
+ButtonSize=ButtonDefault

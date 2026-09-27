@@ -9,4 +9,9 @@ export KINETIX_WALLPAPER="${KINETIX_WALLPAPER:-/usr/share/backgrounds/kinetixos/
 wallpaper_pid=$!
 trap 'kill "$wallpaper_pid" 2>/dev/null || true' EXIT
 
+# The desktop shows the desktop folder live (shell/desktop/DesktopIcons.qml);
+# make sure it exists first, or there is nothing to watch on a fresh account.
+desktop_dir="$(xdg-user-dir DESKTOP 2>/dev/null || true)"
+mkdir -p -- "${desktop_dir:-$HOME/Desktop}"
+
 /usr/bin/quickshell -p /usr/share/kinetix/shell "$@"

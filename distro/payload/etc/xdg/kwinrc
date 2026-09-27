@@ -1,0 +1,11 @@
+# KinetixOS window-decoration defaults (a user's ~/.config/kwinrc still wins).
+# Breeze decoration, coloured by KinetixDark (see /etc/xdg/kdeglobals):
+# thin borders, centred titles, close/max/min on the right.
+[org.kde.kdecoration2]
+library=org.kde.breeze
+theme=Breeze
+BorderSize=Tiny
+BorderSizeAuto=false
+ButtonsOnLeft=
+ButtonsOnRight=IAX
+ShowToolTips=true
