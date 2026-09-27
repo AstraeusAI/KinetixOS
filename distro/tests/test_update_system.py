@@ -257,7 +257,18 @@ class UpdateOrderTests(unittest.TestCase):
         text = self.script.read_text()
         self.assertIn("adopt_kinetix", text)
         self.assertIn("--overwrite", text)
-        self.assertIn("kinetix kinetix-keyring", text)
+        # the keyring is only requested when the repo carries it (unsigned
+        # repos do not), or the whole -S fails on "target not found"
+        self.assertIn('if "$PACMAN" -Si kinetix-keyring', text)
+        # and adoption runs after -Syu: a fresh live system has no sync
+        # databases before it (seen in the QEMU live test)
+        body = text[text.index("# ── 2. packages"):]
+        self.assertLess(body.index('run "$PACMAN" -Syu --noconfirm'),
+                        body.index("\nadopt_kinetix\n"))
+
+    def test_installed_version_file_is_the_package_version(self):
+        pub = (DISTRO / "publish.sh").read_text()
+        self.assertIn('printf \'%s\\n\' "$pkgver" > "$TREE/usr/share/kinetix/version"', pub)
 
 
 class SudoPasswordlessTests(unittest.TestCase):

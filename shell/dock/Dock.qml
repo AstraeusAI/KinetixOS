@@ -48,7 +48,13 @@ PanelWindow {
     implicitWidth: (hover.hovered || menu.open || label.shown)
                    ? 330 : edgeGap + railW + Math.ceil(tileBase * (maxMagnify - 1)) + 16
     implicitHeight: Math.max(300, baseRailH + 120)
-    exclusiveZone: edgeGap + railW + 6
+    // An empty dock (no pinned apps, nothing running — e.g. a fresh live
+    // account) hides and gives its strip back, instead of drawing a squashed
+    // empty pill; it slides back in as soon as there is something to show.
+    readonly property bool empty: dockModel.count === 0
+    property real shown: empty ? 0 : 1
+    Behavior on shown { NumberAnimation { duration: 420; easing.type: Easing.OutQuint } }
+    exclusiveZone: empty ? 0 : edgeGap + railW + 6
     color: "transparent"
 
     WlrLayershell.namespace: "argus:dock"
@@ -205,7 +211,7 @@ PanelWindow {
         id: hitArea
         x: 0
         y: rail.y - 12
-        width: hover.hovered ? rail.x + rail.width + 24 : dock.edgeGap + dock.railW + 4
+        width: dock.empty ? 0 : (hover.hovered ? rail.x + rail.width + 24 : dock.edgeGap + dock.railW + 4)
         height: rail.height + 24
     }
 
@@ -236,8 +242,9 @@ PanelWindow {
         property real enter: 0
         Component.onCompleted: enter = 1
         Behavior on enter { NumberAnimation { duration: 700; easing.type: Easing.OutQuint } }
-        opacity: enter
-        transform: Translate { x: -dock.railW * (1 - rail.enter) }
+        opacity: enter * dock.shown
+        visible: opacity > 0.01
+        transform: Translate { x: -dock.railW * (1 - rail.enter * dock.shown) }
 
         // edge light: a hairline of crimson along the rail's inner edge, and a
         // cool glass highlight down the outer one

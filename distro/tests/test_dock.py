@@ -30,6 +30,13 @@ class DockTests(unittest.TestCase):
         self.assertNotIn("PopupWindow", self.dock)
         self.assertNotIn("PopupWindow", self.item)
 
+    def test_an_empty_dock_hides_and_releases_its_strip(self):
+        # a fresh live account has no pins and no windows: the dock used to
+        # draw a squashed empty pill (seen on the live ISO)
+        self.assertIn("readonly property bool empty: dockModel.count === 0", self.dock)
+        self.assertIn("exclusiveZone: empty ? 0 :", self.dock)
+        self.assertIn("opacity: enter * dock.shown", self.dock)
+
     def test_pinned_apps_are_the_shared_favourites(self):
         self.assertIn("AppIndex.favorites", self.dock)
         self.assertIn("AppIndex.toggleFav(", self.dock)

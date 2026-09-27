@@ -129,20 +129,40 @@ adopt_kinetix() {
         return 0   # nothing to adopt; the package will be installed normally
     fi
     say "Adopting KinetixOS into package management (first update)"
-    local ow=(
-        --overwrite '/usr/share/kinetix/*'
-        --overwrite '/usr/bin/kinetix*'
-        --overwrite '/etc/pacman.d/kinetix-mirrorlist'
-        --overwrite '/usr/share/backgrounds/kinetixos/*'
-        --overwrite '/usr/share/wayland-sessions/kinetix.desktop'
-        --overwrite '/etc/sysctl.d/99-kinetix-performance.conf'
-        --overwrite '/etc/udev/rules.d/60-kinetix-ioscheduler.rules'
-        --overwrite '/etc/systemd/zram-generator.conf'
-        --overwrite '/etc/systemd/system.conf.d/0?-kinetix*'
-        --overwrite '/etc/systemd/user.conf.d/0?-kinetix*'
-        --overwrite '/etc/tmpfiles.d/thp.conf'
-    )
-    if ! run "$PACMAN" -S --needed --noconfirm "${ow[@]}" kinetix kinetix-keyring; then
+    # kinetix-keyring only exists while the repo is signed; ask for it only if
+    # the repo actually carries it, or the whole -S fails on "target not found"
+    local pkgs=(kinetix)
+    if "$PACMAN" -Si kinetix-keyring >/dev/null 2>&1; then
+        pkgs+=(kinetix-keyring)
+    fi
+    # Overwrite exactly the files these packages ship that are already on disk
+    # and owned by no package (the loose copies being adopted). Derived from
+    # the packages themselves, not a hand-kept glob list: that list drifted
+    # every time the payload grew (seen in the QEMU live test: /etc/xdg/*,
+    # systemd drop-ins, a cleanup unit). Files owned by another package are
+    # never overwritten.
+    local ow=() cache url f rel
+    if run "$PACMAN" -Sw --noconfirm "${pkgs[@]}" >/dev/null; then
+        cache="$(pacman-conf CacheDir 2>/dev/null | head -1)"
+        cache="${cache:-/var/cache/pacman/pkg/}"
+        local present=()
+        while IFS= read -r url; do
+            [[ -n "$url" ]] || continue
+            f="$cache/${url##*/}"
+            [[ -f "$f" ]] || continue
+            while IFS= read -r rel; do
+                case "$rel" in .*|*/) continue ;; esac
+                [[ -e "/$rel" || -L "/$rel" ]] && present+=("/$rel")
+            done < <(bsdtar -tf "$f" 2>/dev/null)
+        done < <("$PACMAN" -Sp "${pkgs[@]}" 2>/dev/null)
+        if (( ${#present[@]} )); then
+            while IFS= read -r f; do
+                ow+=(--overwrite "$f")
+            done < <(LC_ALL=C "$PACMAN" -Qo "${present[@]}" 2>&1 \
+                        | sed -n 's/^error: No package owns //p')
+        fi
+    fi
+    if ! run "$PACMAN" -S --needed --noconfirm "${ow[@]}" "${pkgs[@]}"; then
         note "could not adopt the KinetixOS package (repo unreachable?);"
         note "the desktop keeps running from the installed files and will retry next update"
     fi
@@ -150,14 +170,17 @@ adopt_kinetix() {
 
 kernels_before="$("$PACMAN" -Q 2>/dev/null | grep -E '^linux-cachyos[^ ]* ' || true)"
 
-adopt_kinetix
-
 say "Updating packages ($PACMAN -Syu)"
 if (( ASSUME_YES )); then
     run "$PACMAN" -Syu --noconfirm
 else
     run "$PACMAN" -Syu
 fi
+
+# After -Syu, not before: the sync databases must exist (a fresh live system
+# has none, so adopting first failed with "target not found: kinetix"), and
+# installing onto an already-current system avoids a partial upgrade.
+adopt_kinetix
 
 kernels_after="$("$PACMAN" -Q 2>/dev/null | grep -E '^linux-cachyos[^ ]* ' || true)"
 

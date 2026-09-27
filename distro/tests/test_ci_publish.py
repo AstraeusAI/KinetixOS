@@ -58,3 +58,14 @@ class IsoBuildPacmanConfTests(unittest.TestCase):
         build = (ROOT / "distro/build-iso.sh").read_text()
         self.assertIn(r"/^\[kinetix\]/{skip=1; next}", build)
         self.assertIn('"$PROFILE/airootfs/usr/share/kinetix/config/pacman.conf"', build)
+
+
+class IsoExecutablesTests(unittest.TestCase):
+    def test_every_usr_bin_command_is_marked_executable_in_the_image(self):
+        # mkarchiso drops modes; without this the ISO's `kinetix` was 0644
+        build = (ROOT / "distro/build-iso.sh").read_text()
+        self.assertIn('for bin in "$PROFILE/airootfs/usr/bin/"*; do', build)
+        self.assertIn('file_permissions+=(["/usr/bin/%s"]="0:0:755")', build)
+        # and it runs after both airootfs and the payload are in place
+        self.assertLess(build.index('cp -a "$ROOT/distro/payload/." "$PROFILE/airootfs/"'),
+                        build.index('for bin in "$PROFILE/airootfs/usr/bin/"*; do'))

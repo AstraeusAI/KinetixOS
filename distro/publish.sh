@@ -95,7 +95,11 @@ cp -a "$ROOT/distro/payload/." "$TREE/"
 cp -a "$ROOT/shell" "$TREE/usr/share/kinetix/shell"
 cp -a "$ROOT/runtime" "$TREE/usr/share/kinetix/runtime"
 cp -a "$ROOT/scripts" "$TREE/usr/share/kinetix/scripts"
-install -Dm644 "$ROOT/distro/version" "$TREE/usr/share/kinetix/version"
+# the installed version is the package's own (e.g. 0.1.0.r10.g1a2b3c4 from CI),
+# so `kinetix version` and "Update complete — KinetixOS …" name the real build
+install -d "$TREE/usr/share/kinetix"
+printf '%s\n' "$pkgver" > "$TREE/usr/share/kinetix/version"
+chmod 0644 "$TREE/usr/share/kinetix/version"
 # Repo mirrorlist: owned by the package so `kinetix update` keeps the URL
 # current without the installer having to rewrite it.
 install -Dm644 "$ROOT/distro/repo/kinetix-mirrorlist" "$TREE/etc/pacman.d/kinetix-mirrorlist"

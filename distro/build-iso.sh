@@ -122,6 +122,18 @@ chmod 0755 "$PROFILE"/airootfs/usr/bin/kinetix "$PROFILE"/airootfs/usr/bin/kinet
 find "$PROFILE/airootfs/usr/share/kinetix/migrations" -type f -name '*.sh' \
     -exec chmod 0755 {} + 2>/dev/null || true
 chmod 0440 "$PROFILE/airootfs/etc/sudoers.d/kinetix-live"
+# The chmods above do not survive into the image: mkarchiso copies airootfs
+# without preserving modes, so only profiledef's file_permissions counts.
+# (The live ISO shipped a 0644 `kinetix`, which broke `kinetix update` and the
+# bar's `kinetix check`.) List every /usr/bin command and migration there.
+for bin in "$PROFILE/airootfs/usr/bin/"*; do
+    [[ -f "$bin" ]] || continue
+    printf 'file_permissions+=(["/usr/bin/%s"]="0:0:755")\n' "${bin##*/}" >> "$PROFILE/profiledef.sh"
+done
+for mig in "$PROFILE/airootfs/usr/share/kinetix/migrations/"*.sh; do
+    [[ -f "$mig" ]] || continue
+    printf 'file_permissions+=(["%s"]="0:0:755")\n' "${mig#"$PROFILE/airootfs"}" >> "$PROFILE/profiledef.sh"
+done
 
 # Start Kinetix's own Wayland session by default in the live environment.
 SYSTEMD="$PROFILE/airootfs/etc/systemd/system"
