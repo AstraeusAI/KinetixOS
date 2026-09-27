@@ -300,10 +300,10 @@ call for the same reason `mouse_click`'s `clicks` was already clamped to 3 —
 one call is one deliberate step, not a substitute for calling it repeatedly.
 `launch_app`'s raw `sh -c` fallback (used when neither `gio` nor
 `gtk-launch` is available) now checks a desktop entry's `Terminal=true` and
-wraps the command in `konsole`/`alacritty`/`xterm`, or reports plainly that
-no terminal emulator is installed — previously it silently ran a console
-app with no terminal attached, which for a TUI-only tool means it launches
-with no visible output at all rather than failing. `capabilities()` also
+wraps the command in Ghostty, or reports plainly that Ghostty is missing —
+previously it silently ran a console app with no terminal attached, which
+for a TUI-only tool means it launches with no visible output at all rather
+than failing. `capabilities()` also
 stopped calling `input_backend()` three separate times for one report.
 
 ## Unbounded disk growth: captures and checkpoints were never cleaned up

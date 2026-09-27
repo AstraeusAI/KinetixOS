@@ -10,3 +10,6 @@ singleton SysInfo 1.0 SysInfo.qml
 singleton AppCenterState 1.0 AppCenterState.qml
 singleton McpConfig 1.0 McpConfig.qml
 singleton SessionHistory 1.0 SessionHistory.qml
+singleton TaskRunner 1.0 TaskRunner.qml
+singleton InstallerState 1.0 InstallerState.qml
+singleton ErrorWatch 1.0 ErrorWatch.qml

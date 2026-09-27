@@ -2,7 +2,14 @@
 
 from ..config import _REASONING_BUDGET, auth_mode
 from ..prompt import CLAUDE_IDENTITY, SYSTEM_PROMPT
-from .adapters import TOOLS, to_anthropic, to_codex, to_openai
+from .adapters import (
+    TOOLS,
+    anthropic_system_blocks,
+    cached_tools,
+    to_anthropic,
+    to_codex,
+    to_openai,
+)
 from .anthropic import _stream_anthropic
 from .codex import _stream_codex
 from .openai_chat import _stream_openai_chat
@@ -37,7 +44,11 @@ def provider_call(messages, on_event):
             raise RuntimeError("No credential configured for anthropic")
         system, msgs = to_anthropic(messages)
         if mode == "sub":
-            system = (CLAUDE_IDENTITY + "\n\n" + system).strip()
+            # Joins the stable tier rather than being concatenated onto the
+            # front of a flattened string: the identity line is identical on
+            # every call of a task, so it belongs inside the prefix that gets
+            # written once instead of adding to what every call re-reads.
+            system = [{"text": CLAUDE_IDENTITY, "cache": "stable"}] + system
             headers = {
                 "Authorization": "Bearer " + key,
                 "anthropic-version": "2023-06-01",
@@ -53,16 +64,9 @@ def provider_call(messages, on_event):
         body = {
             "model": model,
             "max_tokens": 4096,
-            "system": system,
+            "system": anthropic_system_blocks(system),
             "messages": msgs,
-            "tools": [
-                {
-                    "name": x["function"]["name"],
-                    "description": x["function"]["description"],
-                    "input_schema": x["function"]["parameters"],
-                }
-                for x in TOOLS
-            ],
+            "tools": cached_tools(TOOLS),
         }
         if reasoning != "off":
             budget = _REASONING_BUDGET[reasoning]

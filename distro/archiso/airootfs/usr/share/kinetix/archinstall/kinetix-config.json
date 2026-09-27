@@ -1,0 +1,36 @@
+{
+  "audio_config": {
+    "audio": "pipewire"
+  },
+  "bootloader_config": {
+    "bootloader": "Systemd-boot",
+    "uki": false,
+    "removable": false
+  },
+  "hostname": "kinetixos",
+  "kernels": [
+    "linux-cachyos-bore",
+    "linux-cachyos-bore-nvidia-open"
+  ],
+  "no_pkg_lookups": false,
+  "ntp": true,
+  "offline": false,
+  "packages": [],
+  "profile_config": {
+    "gfx_driver": "All open-source",
+    "greeter": "sddm",
+    "profile": {
+      "main": "Desktop",
+      "details": [
+        "Kinetix"
+      ],
+      "path": "/usr/share/kinetix/archinstall/kinetix_profile.py"
+    }
+  },
+  "script": "guided",
+  "silent": false,
+  "swap": {
+    "enabled": true,
+    "algorithm": "zstd"
+  }
+}

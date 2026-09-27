@@ -1,0 +1,153 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080" viewBox="0 0 1920 1080">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#05070e"/>
+      <stop offset="0.34" stop-color="#11121e"/>
+      <stop offset="0.62" stop-color="#27121d"/>
+      <stop offset="0.80" stop-color="#4a121d"/>
+      <stop offset="1" stop-color="#0a0b12"/>
+    </linearGradient>
+    <radialGradient id="eclipseGlow">
+      <stop offset="0" stop-color="#ff2446" stop-opacity="0.46"/>
+      <stop offset="0.30" stop-color="#ed173a" stop-opacity="0.28"/>
+      <stop offset="0.66" stop-color="#a10e2c" stop-opacity="0.12"/>
+      <stop offset="1" stop-color="#a10e2c" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="horizonGlow">
+      <stop offset="0" stop-color="#fc2144" stop-opacity="0.65"/>
+      <stop offset="0.44" stop-color="#c81835" stop-opacity="0.22"/>
+      <stop offset="1" stop-color="#c81835" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="farRidge" x1="0" y1="0" x2="0.2" y2="1">
+      <stop offset="0" stop-color="#232333"/>
+      <stop offset="0.48" stop-color="#171925"/>
+      <stop offset="1" stop-color="#10131d"/>
+    </linearGradient>
+    <linearGradient id="midRidge" x1="0" y1="0" x2="0.8" y2="1">
+      <stop offset="0" stop-color="#171a26"/>
+      <stop offset="0.52" stop-color="#11141e"/>
+      <stop offset="1" stop-color="#090c14"/>
+    </linearGradient>
+    <linearGradient id="cliffLeft" x1="0" y1="0" x2="0.7" y2="1">
+      <stop offset="0" stop-color="#11131c"/>
+      <stop offset="0.48" stop-color="#080b12"/>
+      <stop offset="1" stop-color="#04060a"/>
+    </linearGradient>
+    <linearGradient id="cliffRight" x1="1" y1="0" x2="0.15" y2="1">
+      <stop offset="0" stop-color="#17121d"/>
+      <stop offset="0.55" stop-color="#0a0c14"/>
+      <stop offset="1" stop-color="#04060a"/>
+    </linearGradient>
+    <linearGradient id="lake" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#21101a"/>
+      <stop offset="0.25" stop-color="#130d16"/>
+      <stop offset="1" stop-color="#05070d"/>
+    </linearGradient>
+    <linearGradient id="lightLine" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#fa2041" stop-opacity="0"/>
+      <stop offset="0.35" stop-color="#fa2041" stop-opacity="0.22"/>
+      <stop offset="0.5" stop-color="#ff3854" stop-opacity="0.95"/>
+      <stop offset="0.66" stop-color="#fa2041" stop-opacity="0.26"/>
+      <stop offset="1" stop-color="#fa2041" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="city" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1e1722"/>
+      <stop offset="1" stop-color="#080a11"/>
+    </linearGradient>
+    <filter id="softGlow" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur stdDeviation="26"/>
+    </filter>
+    <filter id="wideGlow" x="-50%" y="-100%" width="200%" height="300%">
+      <feGaussianBlur stdDeviation="48"/>
+    </filter>
+  </defs>
+
+  <rect width="1920" height="1080" fill="url(#sky)"/>
+  <ellipse cx="1046" cy="326" rx="620" ry="450" fill="url(#eclipseGlow)"/>
+  <ellipse cx="1220" cy="713" rx="710" ry="220" fill="url(#horizonGlow)"/>
+
+  <!-- Wisps of crimson cloud around the eclipse -->
+  <path d="M120 248 C275 202 333 231 442 190 C551 149 610 191 706 166 C786 145 829 173 895 194"
+        fill="none" stroke="#8c1832" stroke-opacity="0.50" stroke-width="28" filter="url(#wideGlow)"/>
+  <path d="M1147 186 C1240 155 1304 178 1376 147 C1470 108 1539 150 1630 124 C1715 99 1781 133 1850 115"
+        fill="none" stroke="#9e1633" stroke-opacity="0.58" stroke-width="32" filter="url(#wideGlow)"/>
+  <path d="M90 292 C238 252 337 278 463 231 M1310 226 C1425 195 1505 223 1630 185 1718 158 1791 188 1880 163"
+        fill="none" stroke="#dc1c3e" stroke-opacity="0.20" stroke-width="4"/>
+
+  <!-- Sparse stars -->
+  <g fill="#dbe0ec" opacity="0.55">
+    <circle cx="145" cy="94" r="1.4"/><circle cx="292" cy="163" r="1"/>
+    <circle cx="424" cy="74" r="1.4"/><circle cx="612" cy="124" r="1"/>
+    <circle cx="774" cy="67" r="1.3"/><circle cx="1323" cy="77" r="1.1"/>
+    <circle cx="1468" cy="145" r="1.5"/><circle cx="1650" cy="67" r="1"/>
+    <circle cx="1807" cy="199" r="1.4"/><circle cx="73" cy="324" r="1"/>
+  </g>
+
+  <!-- Red eclipse and atmospheric halo -->
+  <circle cx="1046" cy="310" r="156" fill="#0b0a12" stroke="#ff2749" stroke-width="5"/>
+  <circle cx="1046" cy="310" r="166" fill="none" stroke="#ff3854" stroke-opacity="0.30" stroke-width="2"/>
+  <path d="M890 305 A156 156 0 0 1 1202 305" fill="none" stroke="#ff7381" stroke-opacity="0.92" stroke-width="3"/>
+  <path d="M909 210 A156 156 0 0 1 1178 208" fill="none" stroke="#f53a54" stroke-opacity="0.24" stroke-width="1"/>
+
+  <!-- Far mountain range -->
+  <path d="M0 565 L74 493 137 519 230 388 293 452 384 322 442 389 527 280 590 371 671 309 742 416 813 354 894 461 967 377 1048 438 1133 347 1210 423 1297 331 1368 402 1455 317 1529 398 1612 301 1691 382 1778 311 1851 392 1920 350 V746 H0Z" fill="url(#farRidge)"/>
+  <path d="M74 493 L137 519 230 388 293 452 384 322 442 389 527 280 590 371 671 309 742 416 813 354 894 461 967 377 1048 438 1133 347 1210 423 1297 331 1368 402 1455 317 1529 398 1612 301 1691 382 1778 311 1851 392"
+        fill="none" stroke="url(#lightLine)" stroke-width="3" opacity="0.72"/>
+  <!-- Faceted mountain faces -->
+  <g fill="#2a1d2b" opacity="0.47">
+    <path d="M230 388l63 64-77 8 83 17-114 39z"/>
+    <path d="M384 322l58 67-79 5 97 38-104 12z"/>
+    <path d="M527 280l63 91-82-25 98 83-131-13z"/>
+    <path d="M742 416l71-62 81 107-96-42-71 23z"/>
+    <path d="M967 377l81 61-78-8 94 78-134-50z"/>
+    <path d="M1297 331l71 71-85-11 75 64-121-32z"/>
+    <path d="M1612 301l79 81-91-22 107 89-140-49z"/>
+  </g>
+
+  <!-- Nearer ridges add depth around the open center -->
+  <path d="M0 657 L94 602 168 625 253 510 326 558 412 463 489 536 571 449 646 514 727 458 811 536 892 478 973 548 1057 468 1141 539 1223 458 1302 528 1394 445 1477 520 1564 443 1641 514 1736 426 1814 501 1920 437 V792 H0Z" fill="url(#midRidge)"/>
+  <path d="M94 602 L168 625 253 510 326 558 412 463 489 536 571 449 646 514 727 458 811 536 892 478 973 548 1057 468 1141 539 1223 458 1302 528 1394 445 1477 520 1564 443 1641 514 1736 426 1814 501"
+        fill="none" stroke="#e72243" stroke-opacity="0.42" stroke-width="2"/>
+  <path d="M253 510l73 48-93 24 117 17-133 36zm318-61l75 65-94-17 111 56-138-20zm486 19l84 71-99-31 124 60-147-26zm337-25l83 75-109-32 125 68-141-32z" fill="#251723" opacity="0.7"/>
+
+  <!-- Modern city, deliberately low on the horizon -->
+  <g fill="url(#city)">
+    <path d="M1180 728V644h32v84zm40 0V586h27v142zm34 0V623h42v105zm49 0V552h33v176zm40 0V607h29v121zm37 0V516h26v212zm33 0V586h45v142zm51 0V544h31v184zm38 0V610h45v118zm51 0V566h27v162zm35 0V624h40v104zm47 0V527h28v201zm35 0V580h46v148zm52 0V615h35v113zm43 0V555h24v173z"/>
+    <path d="M1331 728V504h8v224m188 0V472h8v256m231 0V489h7v239" fill="#18131c"/>
+    <path d="M1527 520l15-44 15 44zM1751 506l11-34 12 34z" fill="#17121b"/>
+  </g>
+  <g fill="#ff3150" opacity="0.9">
+    <rect x="1198" y="665" width="4" height="5"/><rect x="1255" y="621" width="4" height="5"/>
+    <rect x="1300" y="680" width="4" height="5"/><rect x="1350" y="581" width="4" height="5"/>
+    <rect x="1422" y="638" width="4" height="5"/><rect x="1471" y="548" width="4" height="5"/>
+    <rect x="1538" y="608" width="4" height="5"/><rect x="1596" y="574" width="4" height="5"/>
+    <rect x="1661" y="650" width="4" height="5"/><rect x="1720" y="590" width="4" height="5"/>
+    <rect x="1792" y="640" width="4" height="5"/><rect x="1843" y="577" width="4" height="5"/>
+  </g>
+  <path d="M1220 728H1920" stroke="#ff2749" stroke-opacity="0.46" stroke-width="3"/>
+
+  <!-- Lake and reflected light -->
+  <path d="M0 729 C255 711 469 733 686 721 S1036 713 1247 727 S1620 711 1920 725 V1080 H0Z" fill="url(#lake)"/>
+  <path d="M870 745 C1010 737 1116 738 1260 746" stroke="#ff2749" stroke-opacity="0.92" stroke-width="5"/>
+  <path d="M930 772 C1044 768 1131 771 1245 776" stroke="url(#lightLine)" stroke-width="4"/>
+  <path d="M982 804 C1042 801 1140 803 1209 808" stroke="#eb1e40" stroke-opacity="0.52" stroke-width="3"/>
+  <path d="M878 845 C993 841 1092 843 1228 849" stroke="url(#lightLine)" stroke-width="3" opacity="0.68"/>
+  <path d="M1008 889 C1062 886 1142 889 1204 894" stroke="#dd1838" stroke-opacity="0.42" stroke-width="2"/>
+  <path d="M945 936 C1035 934 1102 935 1178 940" stroke="url(#lightLine)" stroke-width="2" opacity="0.46"/>
+  <path d="M1040 990 C1090 988 1141 990 1187 994" stroke="#bd1431" stroke-opacity="0.30" stroke-width="2"/>
+  <path d="M837 765l95 2m183 20 64 2m-265 35 90 2m102 26 87 2m-275 36 74 1m180 39 56 2" stroke="#ff5364" stroke-opacity="0.2" stroke-width="2"/>
+
+  <!-- Foreground cliffs frame the scene and leave a clear center field -->
+  <path d="M0 645 L78 612 124 625 169 576 213 609 262 557 302 595 352 542 400 590 443 574 489 632 533 667 611 695 688 713 734 753 778 785 850 813 905 858 953 882 1001 940 1042 1080H0Z" fill="url(#cliffLeft)"/>
+  <path d="M0 645 L78 612 124 625 169 576 213 609 262 557 302 595 352 542 400 590 443 574 489 632 533 667 611 695 688 713" fill="none" stroke="#ff1f42" stroke-opacity="0.78" stroke-width="3"/>
+  <path d="M138 662l54-8 28 22-38 2 77 37-93-16 78 49-116-32 78 64-151-53 101 74-147-28z" fill="#17131c" opacity="0.82"/>
+  <path d="M1920 660 L1850 624 1801 649 1763 601 1721 632 1678 584 1632 615 1588 568 1540 606 1498 579 1458 621 1418 646 1376 688 1322 710 1281 748 1251 789 1224 817 1185 865 1151 893 1115 949 1080 1080H1920Z" fill="url(#cliffRight)"/>
+  <path d="M1920 660 L1850 624 1801 649 1763 601 1721 632 1678 584 1632 615 1588 568 1540 606 1498 579 1458 621 1418 646 1376 688 1322 710 1281 748" fill="none" stroke="#f02242" stroke-opacity="0.64" stroke-width="3"/>
+
+  <!-- Pine silhouettes -->
+  <g fill="#04060a">
+    <path d="M145 690l-28 46h17l-23 37h17v36h10v-36h18l-22-37h17zm105-42l-20 35h13l-18 29h14v28h8v-28h14l-18-29h13zm112 83l-23 38h14l-19 31h14v30h9v-30h15l-19-31h14z"/>
+    <path d="M1783 680l-23 39h14l-19 31h14v31h9v-31h14l-19-31h14zm78 36l-19 32h12l-16 26h12v25h8v-25h12l-16-26h12zm-242-14l-25 42h15l-20 33h15v31h9v-31h15l-20-33h15z"/>
+  </g>
+  <rect y="1038" width="1920" height="42" fill="#030509" opacity="0.66"/>
+</svg>

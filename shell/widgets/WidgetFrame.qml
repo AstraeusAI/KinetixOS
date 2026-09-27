@@ -129,28 +129,11 @@ GlassPanel {
             }
 
             // Close button
-            Rectangle {
-                width: 24; height: 24; radius: 7
-                color: closeMa.containsMouse ? Theme.alpha(Theme.danger, 0.22) : "transparent"
-                border.width: 1
-                border.color: closeMa.containsMouse ? Theme.alpha(Theme.danger, 0.45) : "transparent"
+            CloseButton {
+                box: 24
+                tip: "Remove widget"
                 anchors.verticalCenter: parent.verticalCenter
-                Behavior on color { ColorAnimation { duration: Theme.durFast } }
-                Behavior on border.color { ColorAnimation { duration: Theme.durFast } }
-
-                Text {
-                    anchors.centerIn: parent
-                    text: "✕"
-                    color: closeMa.containsMouse ? Theme.danger : Theme.textFaint
-                    font { family: Theme.fontUi; pixelSize: 11; weight: Font.Medium }
-                }
-                MouseArea {
-                    id: closeMa
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: WidgetStore.remove(frame.widget.id)
-                }
+                onClicked: WidgetStore.remove(frame.widget.id)
             }
         }
 
@@ -186,7 +169,9 @@ GlassPanel {
                 pressSceneX = mouse.sceneX;
                 pressSceneY = mouse.sceneY;
                 startX = frame.x; startY = frame.y;
-                WidgetStore.bringToFront(frame.widget.id);
+                // No bringToFront() here: it replaces the Variants `order`
+                // array (structural change), which can destroy this delegate
+                // mid-press and drop the mouse grab. Raise happens on release.
             }
             onPositionChanged: function(mouse) {
                 if (!pressed) return;

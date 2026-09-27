@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Launches archinstall pre-seeded with the Kinetix profile (see
+# usr/share/kinetix/archinstall/kinetix_profile.py). Deliberately NOT
+# --silent: disk selection, partitioning confirmation, locale, timezone,
+# and user creation all stay fully interactive — pre-seeding only removes
+# repetitive typing (package set, kernel, bootloader, audio, swap), never
+# the confirmation step before anything destructive happens to a disk.
+if [ "$(id -u)" -ne 0 ]; then exec sudo archinstall --config /usr/share/kinetix/archinstall/kinetix-config.json "$@"; fi
+exec archinstall --config /usr/share/kinetix/archinstall/kinetix-config.json "$@"

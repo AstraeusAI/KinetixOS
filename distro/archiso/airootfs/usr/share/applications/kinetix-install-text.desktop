@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=Install KinetixOS (text mode)
+Comment=Advanced installer using archinstall's own menus
+Exec=kinetix-install
+TryExec=kinetix-install
+Icon=system-installer
+Terminal=true
+Type=Application
+Categories=System;

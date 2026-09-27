@@ -38,6 +38,18 @@ QtObject {
     property string selectedCategory: "all" // "all" | "Development" | "Communication" | "Media" | "Browsers" | "Productivity" | "Gaming" | "System"
     property bool updatingAll: false
 
+    readonly property int installedEnginesCount: {
+        var count = 0;
+        if (managers.pacman && managers.pacman.installed) count++;
+        if (managers.paru && managers.paru.installed) count++;
+        if (managers.yay && managers.yay.installed) count++;
+        if (managers.flatpak && managers.flatpak.installed) count++;
+        if (managers.snap && managers.snap.installed) count++;
+        if (managers.appimage && managers.appimage.installed) count++;
+        return count;
+    }
+    readonly property int totalEnginesCount: 6
+
     readonly property var filteredFeaturedApps: {
         if (!featuredApps || featuredApps.length === 0) return [];
         if (!selectedCategory || selectedCategory === "all") return featuredApps;
@@ -120,8 +132,13 @@ QtObject {
     }
 
     property Process searchProc: Process {
+        // Sequence tag captured at start; replies from a superseded search
+        // are dropped instead of clobbering newer results or clearing the
+        // spinner early.
+        property int searchTag: -1
         stdout: StdioCollector {
             onStreamFinished: {
+                if (searchProc.searchTag !== root.searchSeq) return;
                 root.searching = false;
                 try {
                     var d = JSON.parse(this.text);
@@ -133,7 +150,29 @@ QtObject {
         }
     }
 
-    property Process actionProc: Process {}
+    // One package job at a time. The backend blocks until its terminal
+    // window closes, so onExited is the real "job finished" signal: busy
+    // flags clear and installed/updates state is re-read only then.
+    readonly property bool busy: actionProc.running
+    property Process actionProc: Process {
+        stdout: StdioCollector {
+            onStreamFinished: {
+                try {
+                    var d = JSON.parse(this.text);
+                    if (d.status === "failed")
+                        console.warn("AppCenter: package job failed, rc", d.rc);
+                } catch (e) {}
+            }
+        }
+        onExited: refreshTimer.restart()
+    }
+
+    function runAction(args) {
+        if (actionProc.running) return false;
+        actionProc.command = ["python3", scriptPath].concat(args);
+        actionProc.running = true;
+        return true;
+    }
 
     function refreshStatus() {
         statusProc.command = ["python3", scriptPath, "status"];
@@ -156,40 +195,34 @@ QtObject {
             searching = false;
             return;
         }
+        searchSeq++;
+        // Terminate a still-running previous search before reusing the
+        // single Process; its late reply is dropped by the seq guard below.
+        if (searchProc.running) searchProc.running = false;
+        searchProc.searchTag = searchSeq;
         searchProc.command = ["python3", scriptPath, "search", searchQuery.trim(), sourceFilter];
         searchProc.running = true;
     }
+    property int searchSeq: 0
 
     function installApp(source, id) {
-        installingId = id;
-        actionProc.command = ["python3", scriptPath, "install", source, id];
-        actionProc.running = true;
-        // Schedule refresh after 4 seconds
-        refreshTimer.restart();
+        if (runAction(["install", source, id])) installingId = id;
     }
 
     function uninstallApp(source, id) {
-        actionProc.command = ["python3", scriptPath, "uninstall", source, id];
-        actionProc.running = true;
-        refreshTimer.restart();
+        runAction(["uninstall", source, id]);
     }
 
     function enableManager(manager) {
-        enablingManager = manager;
-        actionProc.command = ["python3", scriptPath, "enable-manager", manager];
-        actionProc.running = true;
-        refreshTimer.restart();
+        if (runAction(["enable-manager", manager])) enablingManager = manager;
     }
 
     function updateAll() {
-        updatingAll = true;
-        actionProc.command = ["python3", scriptPath, "update-all"];
-        actionProc.running = true;
-        refreshTimer.restart();
+        if (runAction(["update-all"])) updatingAll = true;
     }
 
     property Timer refreshTimer: Timer {
-        interval: 3500
+        interval: 300
         repeat: false
         onTriggered: {
             root.installingId = "";
@@ -198,6 +231,7 @@ QtObject {
             root.checkingUpdates = false;
             root.refreshStatus();
             root.refreshFeatured();
+            if (root.searchQuery.trim() !== "") root.executeSearch();
             if (typeof AppIndex !== "undefined" && AppIndex && AppIndex.rescan) {
                 AppIndex.rescan();
             }

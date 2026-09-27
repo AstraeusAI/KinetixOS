@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Use standalone Kinetix landscape artwork inspired by the reference. The
+# original screenshot remains reference-only so its mockup bar/dock/widgets do
+# not duplicate the real Quickshell surfaces.
+export KINETIX_WALLPAPER="${KINETIX_WALLPAPER:-/usr/share/backgrounds/kinetixos/wallpaper.png}"
+/usr/bin/swaybg -i "$KINETIX_WALLPAPER" -m fill &
+wallpaper_pid=$!
+trap 'kill "$wallpaper_pid" 2>/dev/null || true' EXIT
+
+/usr/bin/quickshell -p /usr/share/kinetix/shell "$@"

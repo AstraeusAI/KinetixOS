@@ -665,6 +665,27 @@ QtObject {
         }
     }
 
+    // Opening the agent panel tells the daemon to refresh its desktop-
+    // capability cache in the background, so the probe it would otherwise
+    // run at the start of the first message is already done by the time the
+    // user has typed it. Fire-and-forget; a missing daemon is harmless.
+    property Socket prewarmSocket: Socket {
+        path: ArgusBridge.runtimeSocketPath
+        onConnectedChanged: {
+            if (!connected) return;
+            write(JSON.stringify({ "op": "prewarm" }) + "\n");
+            flush();
+            connected = false;
+        }
+    }
+    property Connections panelWatch: Connections {
+        target: AgentState
+        function onPanelOpenChanged() {
+            if (AgentState.panelOpen && !ArgusBridge.prewarmSocket.connected)
+                ArgusBridge.prewarmSocket.connected = true;
+        }
+    }
+
     property Socket cancelSocket: Socket {
         property string requestId: ""
         path: ArgusBridge.runtimeSocketPath

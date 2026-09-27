@@ -1,0 +1,10 @@
+[Trigger]
+Operation = Install
+Operation = Upgrade
+Type = Package
+Target = sddm
+
+[Action]
+Description = Configure password-locked KinetixOS live-user autologin
+When = PostTransaction
+Exec = /usr/bin/install -m 0644 /usr/share/kinetix/config/sddm-autologin.pam /etc/pam.d/sddm-autologin

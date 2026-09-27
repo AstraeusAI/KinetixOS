@@ -1,0 +1,36 @@
+# KinetixOS I/O scheduler selection — matched to device class, not a single
+# scheduler forced on every disk. The kernel's default assignment already
+# leans this way in newer releases, but this makes it explicit and
+# consistent across the "all hardware" range this ISO targets.
+
+# NVMe: multi-queue blk-mq drivers already parallelize and reorder well in
+# hardware; a software scheduler on top ("none" un-sets any) adds queueing
+# overhead for no benefit and can add latency under heavy random I/O.
+ACTION=="add|change", KERNEL=="nvme[0-9]*n[0-9]*", ATTR{queue/scheduler}="none"
+ACTION=="add|change", KERNEL=="nvme[0-9]*n[0-9]*", ATTR{queue/add_random}="0", ATTR{queue/nr_requests}="1024"
+
+# Non-rotational SATA/SAS SSD: mq-deadline bounds worst-case request
+# latency cheaply, without BFQ's extra per-request accounting overhead
+# that non-rotational media doesn't need to pay for.
+ACTION=="add|change", KERNEL=="sd[a-z]*", ATTR{queue/rotational}=="0", ATTR{queue/scheduler}="mq-deadline"
+ACTION=="add|change", KERNEL=="sd[a-z]*", ATTR{queue/rotational}=="0", ATTR{queue/add_random}="0", ATTR{queue/nr_requests}="256"
+
+# Non-rotational eMMC and SD flash cards: mq-deadline prevents request starvation
+# without seek-accounting overhead.
+ACTION=="add|change", KERNEL=="mmcblk[0-9]*", ATTR{queue/rotational}=="0", ATTR{queue/scheduler}="mq-deadline"
+
+# Rotational HDD: BFQ actively optimizes for seek cost and per-process
+# fairness, which matters on high-latency spinning media in a way it
+# doesn't on flash.
+ACTION=="add|change", KERNEL=="sd[a-z]*", ATTR{queue/rotational}=="1", ATTR{queue/scheduler}="bfq"
+
+# Live squashfs loop devices: squashfs blocks are compressed in 1MB chunks (-b 1M).
+# Raising loop device readahead to 2048KB (2MB) ensures 2 complete compressed 1MB
+# squashfs blocks are read per sequential DMA request from the USB/optical boot media,
+# eliminating split-block I/O stalls during application and shell startup.
+ACTION=="add|change", KERNEL=="loop[0-9]*", ATTR{queue/read_ahead_kb}="2048"
+
+# SATA Active Link Power Management (ALPM): prevents 50-200ms link wakeup latency
+# stalls across SATA SSDs and HDDs.
+ACTION=="add", SUBSYSTEM=="scsi_host", KERNEL=="host*", ATTR{link_power_management_supported}=="1", ATTR{link_power_management_policy}="max_performance"
+

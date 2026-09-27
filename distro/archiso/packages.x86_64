@@ -1,0 +1,81 @@
+# KinetixOS live desktop additions; Archiso releng supplies the base system.
+# Keep this list architecture-generic. GPU selection for installed systems is
+# handled by the installer/hardware profile, not a hardware-specific live ISO.
+# Use the generic x86_64 CachyOS repository, never the x86_64-v3 repository.
+cachyos-keyring
+cachyos-mirrorlist
+linux-cachyos-bore
+kwin
+quickshell
+qt6-wayland
+# wayland-utils provides wayland-info, which the agent runtime uses to read
+# the compositor's advertised globals. That is how it answers "does this
+# compositor implement the virtual-keyboard protocol" without injecting a
+# trial keystroke into whatever window the user currently has focused — see
+# runtime/lib/kwin.py's wtype_supported(). Without it the runtime reports the
+# capability as undeterminable, which is honest but less useful.
+wayland-utils
+qt6-tools
+ghostty
+xdg-terminal-exec
+swaybg
+sddm
+ksshaskpass
+xorg-server
+networkmanager
+pipewire
+pipewire-pulse
+wireplumber
+xdg-desktop-portal
+xdg-desktop-portal-gtk
+mesa
+vulkan-radeon
+vulkan-intel
+flatpak
+iptables
+gnu-free-fonts
+qt6-multimedia-ffmpeg
+pipewire-jack
+tesseract-data-eng
+inter-font
+ttf-jetbrains-mono
+ydotool
+wl-clipboard
+at-spi2-core
+spectacle
+archinstall
+# `kinetix check` uses checkupdates (pacman-contrib) to ask whether updates
+# exist without root, by syncing into a throwaway database — the mechanism the
+# bar's update badge depends on. ufw backs `kinetix firewall`; the installed
+# system enables it default-deny at provision time.
+pacman-contrib
+ufw
+
+# ── Performance/stability tuning (round 14) — safe on every CPU/GPU vendor.
+# Config lives in airootfs/etc/{sysctl.d,systemd,udev/rules.d}; each of
+# these packages just supplies the daemon/generator that config targets.
+zram-generator
+irqbalance
+ananicy-cpp
+cachyos-ananicy-rules
+power-profiles-daemon
+
+# ── Gaming support — near-zero idle cost, all opt-in at point of use.
+# gamemode only changes anything while a game requests it; mangohud only
+# draws when a game launches with it enabled; gamescope is a compositor
+# you choose to run a game session under, not a background service.
+gamemode
+lib32-gamemode
+mangohud
+lib32-mangohud
+gamescope
+
+# ── NVIDIA — exact-version match for linux-cachyos-bore, Turing-or-newer
+# GPUs. Installed unconditionally (like the vanilla `linux` fallback
+# kernel already is) but NEVER the default or auto-selected boot entry —
+# see efiboot/loader/entries/03-kinetix-nvidia.conf and the `arch-nvidia`
+# syslinux label. Hardware-conditional *selection* still belongs in the
+# installer (README's stated gap); this closes the "no NVIDIA boot path
+# exists at all yet" half of that gap without penalizing AMD/Intel-only
+# systems with a driver they'd never use by default.
+linux-cachyos-bore-nvidia-open

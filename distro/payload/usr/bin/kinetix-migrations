@@ -1,0 +1,90 @@
+#!/usr/bin/env bash
+# kinetix-migrations — apply KinetixOS config/data migrations, in order, once.
+#
+# A package upgrade can replace everything in /usr, but it cannot touch the
+# parts of Kinetix that live in the user's home — the shell reads
+# ~/.config/argus/*, the runtime keeps its journal under ~/.local/share/argus.
+# When a release changes the shape of any of that, the change ships as a
+# migration script here and runs on the next `kinetix update`.
+#
+# Contract for a migration script ($MIGRATIONS_DIR/NNNN-name.sh):
+#   - runs as root, idempotent, exits non-zero on failure
+#   - the number prefix is the order; it must never be reused or reordered
+#   - a marker in the state dir records that it ran, so it runs exactly once
+#
+# `run` stops at the first failure and does not mark it, so a broken migration
+# is retried after being fixed rather than skipped.
+set -Eeuo pipefail
+
+MIGRATIONS_DIR="${KINETIX_MIGRATIONS_DIR:-/usr/share/kinetix/migrations}"
+STATE_DIR="${KINETIX_STATE_DIR:-/var/lib/kinetix}"
+APPLIED_DIR="$STATE_DIR/migrations-applied"
+
+action="${1:-list}"
+
+list_migrations() {
+    [[ -d "$MIGRATIONS_DIR" ]] || return 0
+    # LC_ALL=C so the numeric prefixes sort by digits, not by locale rules.
+    find "$MIGRATIONS_DIR" -maxdepth 1 -type f -name '[0-9]*.sh' -printf '%f\n' 2>/dev/null \
+        | LC_ALL=C sort
+}
+
+is_applied() { [[ -e "$APPLIED_DIR/$1" ]]; }
+
+case "$action" in
+    list)
+        count=0
+        while IFS= read -r m; do
+            [[ -z "$m" ]] && continue
+            count=$((count + 1))
+            if is_applied "$m"; then
+                printf '  applied    %s\n' "${m%.sh}"
+            else
+                printf '  pending    %s\n' "${m%.sh}"
+            fi
+        done < <(list_migrations)
+        (( count == 0 )) && printf '  (no migrations installed)\n'
+        ;;
+    run)
+        mkdir -p -- "$APPLIED_DIR"
+        ran=0
+        while IFS= read -r m; do
+            [[ -z "$m" ]] && continue
+            if is_applied "$m"; then
+                continue
+            fi
+            printf '==> migration %s\n' "${m%.sh}"
+            if ! bash "$MIGRATIONS_DIR/$m"; then
+                printf 'kinetix-migrations: %s failed; stopping (it will retry next update)\n' "$m" >&2
+                exit 1
+            fi
+            # Marker named after the script, not a number, so a future rename
+            # of the description half cannot make it look unapplied.
+            : > "$APPLIED_DIR/$m"
+            ran=$((ran + 1))
+        done < <(list_migrations)
+        if (( ran == 0 )); then
+            printf '    nothing to apply\n'
+        else
+            printf '    applied %d migration(s)\n' "$ran"
+        fi
+        ;;
+    status)
+        # Exit 10 when something is pending, matching `kinetix check`'s
+        # convention, so scripts can branch on it.
+        pending=0
+        while IFS= read -r m; do
+            [[ -z "$m" ]] && continue
+            is_applied "$m" || pending=$((pending + 1))
+        done < <(list_migrations)
+        (( pending > 0 )) && exit 10
+        exit 0
+        ;;
+    -h|--help|help)
+        printf 'usage: kinetix-migrations [list|run|status]\n'
+        ;;
+    *)
+        printf 'kinetix-migrations: unknown action %q\n' "$action" >&2
+        exit 2
+        ;;
+esac

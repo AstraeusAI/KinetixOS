@@ -68,7 +68,8 @@ Item {
             if (root.gradientFill) {
                 var grad = ctx.createLinearGradient(0, 0, 0, h);
                 grad.addColorStop(0.0, root.fillColor);
-                grad.addColorStop(0.7, Theme.alpha(root.fillColor, 0.4));
+                grad.addColorStop(0.45, Theme.alpha(root.fillColor, 0.50));
+                grad.addColorStop(0.85, Theme.alpha(root.fillColor, 0.12));
                 grad.addColorStop(1.0, "transparent");
                 ctx.fillStyle = grad;
             } else {
@@ -76,7 +77,25 @@ Item {
             }
             ctx.fill();
 
-            // line
+            // Pass 1: Atmospheric underglow stroke
+            ctx.beginPath();
+            ctx.moveTo(px(0), py(v[0]));
+            for (var g = 1; g < n; g++) {
+                if (root.smooth && g < n - 1) {
+                    var xcg = (px(g) + px(g + 1)) / 2;
+                    var ycg = (py(v[g]) + py(v[g + 1])) / 2;
+                    ctx.quadraticCurveTo(px(g), py(v[g]), xcg, ycg);
+                } else {
+                    ctx.lineTo(px(g), py(v[g]));
+                }
+            }
+            ctx.strokeStyle = Qt.rgba(root.lineColor.r, root.lineColor.g, root.lineColor.b, 0.28);
+            ctx.lineWidth = root.lineWidth * 2.4;
+            ctx.lineJoin = "round";
+            ctx.lineCap = "round";
+            ctx.stroke();
+
+            // Pass 2: High-definition primary line
             ctx.beginPath();
             ctx.moveTo(px(0), py(v[0]));
             for (var k = 1; k < n; k++) {
@@ -94,21 +113,27 @@ Item {
             ctx.lineCap = "round";
             ctx.stroke();
 
-            // active head dot at the latest point
+            // Active head dot with diamond incandescent core
             if (root.showDot && n > 0) {
                 var lastX = px(n - 1);
                 var lastY = py(v[n - 1]);
 
-                // outer glow
+                // Outer volumetric atmospheric corona
                 ctx.beginPath();
-                ctx.arc(lastX, lastY, Math.max(2.4, root.lineWidth * 2.0), 0, 2 * Math.PI);
-                ctx.fillStyle = Qt.rgba(root.lineColor.r, root.lineColor.g, root.lineColor.b, 0.30);
+                ctx.arc(lastX, lastY, Math.max(3.6, root.lineWidth * 2.8), 0, 2 * Math.PI);
+                ctx.fillStyle = Qt.rgba(root.lineColor.r, root.lineColor.g, root.lineColor.b, 0.25);
                 ctx.fill();
 
-                // solid inner core
+                // Saturated color bead
                 ctx.beginPath();
-                ctx.arc(lastX, lastY, Math.max(1.2, root.lineWidth * 1.0), 0, 2 * Math.PI);
+                ctx.arc(lastX, lastY, Math.max(1.8, root.lineWidth * 1.3), 0, 2 * Math.PI);
                 ctx.fillStyle = root.lineColor;
+                ctx.fill();
+
+                // Incandescent diamond specular center
+                ctx.beginPath();
+                ctx.arc(lastX, lastY, Math.max(0.8, root.lineWidth * 0.6), 0, 2 * Math.PI);
+                ctx.fillStyle = Qt.rgba(1.0, 1.0, 1.0, 0.92);
                 ctx.fill();
             }
         }

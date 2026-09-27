@@ -35,22 +35,124 @@ def tool(
     grant,
     risk="read",
     mutates=False,
-    verify=(),
+    verify=None,
     needs_grant=None,
     sandboxed=False,
-    subject=("path",),
+    spawn_arg=None,
+    subject=None,
+    undo=None,
 ):
     """Register one tool.
 
     `subject` tells the policy layer which argument(s) carry the thing being
-    judged: a tuple of argument names (the default, `("path",)`), or a callable
-    `(ctx, args) -> list` when the subject has to be looked up. Without it a
-    tool whose schema names its paths something else (move_file's src/dst) is
-    classified with no subject at all — which policy.py now fails closed on
-    rather than treating as inside the workspace.
+    judged: a tuple of argument names, or a callable `(ctx, args) -> list` when
+    the subject has to be looked up. Without it a tool whose schema names its
+    paths something else (move_file's src/dst) is classified with no subject at
+    all — which policy.py now fails closed on rather than treating as inside
+    the workspace.
+
+    Left unset, the subject is derived from the schema: a tool judges a path
+    only if it actually has a `path` argument, so the ~30 computer-use tools
+    that take no filesystem path no longer advertise a subject they don't have.
+    An explicitly declared tuple is checked against the schema at import time.
+    That check exists because the alternative is silent: assert_region_changed
+    declared the default `("path",)` while its path argument is `before_path`,
+    so it was classified with an *empty* subject, the empty-subject fail-closed
+    branch in policy.py only covers fs.read/fs.write, and the `screen` grant's
+    `**` auto rule matched "" — a caller-supplied absolute path went straight
+    into ImageMagick with no prompt and no workspace check. A misdeclaration
+    that produces a weaker verdict than intended is exactly the kind of bug a
+    silent default invites, so it is now a loud import-time error.
+
+    `verify` names which post-write checks the loop runs on the file the call
+    touched, and it is the *only* thing that decides that — it used to be
+    declared on three tools and read by nobody, while the loop independently
+    hardcoded "syntax, then lint if available" for anything flagged
+    `mutates`. A declared-but-unread field is the same failure mode as the
+    `sandboxed` flag below, and it had already produced one real divergence:
+    delete_file wrote to disk and snapshot undo state without declaring
+    `mutates`, so it was outside the pipeline entirely, while
+    checkpoint_restore declared `mutates` and pointed at a `path` argument it
+    does not have. Left unset, a mutating tool defaults to `("syntax", "lint")`
+    — the behaviour the hardcoded version had — and passing `verify=()` is the
+    explicit, visible way to say "this mutation has nothing to check", which is
+    what delete_file (the file is gone) and move_file (its arguments are src
+    and dst, not path) mean.
+
+    `undo` declares that the call is undoable, which the loop enforces: a tool
+    that claims it and returns no checkpoint id is logged as
+    `undo_not_checkpointed`. It defaults to `mutates`, and declaring it on a
+    non-mutating tool is an import-time error, because "I mutate the world
+    but not the files" and "I snapshot undo state but declare nothing" are
+    both ways for the declaration to stop describing the handler.
+
+    The checkpoint itself stays in the handler rather than moving into the
+    loop, deliberately. Saving before the call would burn a snapshot for every
+    *failed* edit — edit_file rejects a non-unique needle, a stale old_string
+    and a no-op replacement before it ever writes, and a loop-driven save
+    would record all of those as restorable states — whereas the handler knows
+    the write is genuinely about to happen. The declaration is what makes that
+    per-handler call auditable instead of a convention.
+
+    `sandboxed=True` is a claim the loop relies on: loop.py auto-approves an
+    `exec`-grant tool that takes no free-text command on the strength of being
+    "a fixed, sandboxed, workspace-scoped action". Set it only when the handler
+    actually confines execution through sandbox.run. It used to be declared but
+    never read, so syntax_check / format_file / lint all confined their
+    subprocesses and still said False while the downgrade applied to them
+    anyway, on the strength of a claim nobody checked. verify_ui was the one
+    tool where the claim was genuinely false — it starts a `--no-sandbox`
+    Chromium with working network and no approval — and it is now the one that
+    prompts.
+
+    `spawn_arg` names the argument that carries free-text process input, which
+    is only sometimes present in a given call. When it is supplied the call is
+    never auto-approved, whatever the grant: the grant answers "may this agent
+    use the mouse" and says nothing about "may this agent run this string".
+    It is an argument name rather than a flag because the same tool has a
+    bounded path and an unbounded one — focus_or_launch resolves an app name
+    against the installed .desktop table (routine, unattended) but also
+    accepts a literal `command` it shlex.splits into an unsandboxed Popen (not
+    routine). A blanket flag would have prompted on every app launch; a blanket
+    omission would have left `sudo rm -rf /` auto-approved through it.
     """
 
     def deco(fn):
+        props = parameters.get("properties", {}) if isinstance(parameters, dict) else {}
+        declared = subject
+        if declared is None:
+            declared = ("path",) if "path" in props else None
+        elif not callable(declared):
+            names = declared if isinstance(declared, (list, tuple)) else (declared,)
+            missing = [n for n in names if n not in props]
+            if missing:
+                raise ValueError(
+                    f"tool {name!r} declares subject {list(names)!r} but its schema "
+                    f"has no such argument (properties: {sorted(props)}). Either "
+                    f"name the argument that carries the subject or pass "
+                    f"subject=callable when it has to be looked up."
+                )
+        # Resolve both defaults here rather than in the loop, so the registry
+        # entry is the single place the answer lives: after this, `verify` and
+        # `undo` are concrete values and no consumer has to re-derive a default
+        # from `mutates` and hope it matches this one.
+        if verify is not None:
+            kinds = tuple(verify)
+        else:
+            kinds = ("syntax", "lint") if mutates else ()
+        unknown = [k for k in kinds if k not in ("syntax", "lint")]
+        if unknown:
+            raise ValueError(
+                f"tool {name!r} declares unknown verify kind(s) {unknown!r}; "
+                f"loop.verify() implements ('syntax', 'lint')."
+            )
+        wants_undo = mutates if undo is None else bool(undo)
+        if wants_undo and not mutates:
+            raise ValueError(
+                f"tool {name!r} declares undo=True but mutates=False. Undo is "
+                f"about snapshotting a file the call changes, so it cannot hold "
+                f"for a call that declares it changes nothing — pick one."
+            )
         REGISTRY[name] = {
             "name": name,
             "description": description,
@@ -58,10 +160,12 @@ def tool(
             "grant": grant,
             "risk": risk,
             "mutates": mutates,
-            "verify": list(verify),
+            "verify": list(kinds),
+            "undo": wants_undo,
             "needs_grant": needs_grant,
             "sandboxed": sandboxed,
-            "subject": subject,
+            "spawn_arg": spawn_arg,
+            "subject": declared,
             "handler": fn,
         }
         return fn
@@ -389,7 +493,6 @@ def file_info(ctx, args):
     grant="fs.write",
     risk="soft",
     mutates=True,
-    verify=("syntax",),
 )
 def write_file(ctx, args):
     p = ctx.workspace.resolve(args["path"])
@@ -426,7 +529,6 @@ def write_file(ctx, args):
     grant="fs.write",
     risk="soft",
     mutates=True,
-    verify=("syntax",),
 )
 def edit_file(ctx, args):
     p = ctx.workspace.resolve(args["path"], must_exist=True)
@@ -497,7 +599,6 @@ def edit_file(ctx, args):
     grant="fs.write",
     risk="soft",
     mutates=True,
-    verify=("syntax",),
 )
 def multi_edit(ctx, args):
     edits = args.get("edits")
@@ -599,6 +700,11 @@ def make_dir(ctx, args):
     grant="fs.write",
     risk="soft",
     mutates=True,
+    # No syntax target: this tool's schema has src/dst and no `path`, and a
+    # renamed file is not a file the loop could check. Declared explicitly so
+    # the absence is a decision on the tool rather than a side effect of the
+    # loop's old `args.get("path")` test silently finding nothing here.
+    verify=(),
     subject=("src", "dst"),
 )
 def move_file(ctx, args):
@@ -642,17 +748,17 @@ def move_file(ctx, args):
         "properties": {"path": {"type": "string"}},
         "required": ["path"],
     },
-    # mutates=False is deliberate, not an oversight: `mutates` exists to
-    # trigger the runtime's automatic post-write syntax_check/lint pass
-    # (see argusd.run()'s verify() call, gated on `spec["mutates"] and
-    # args.get("path")`). Setting it True here — this schema does have a
-    # "path" key, same as write_file/edit_file — would run syntax_check
-    # against a file that no longer exists a moment after deleting it,
-    # misreporting a successful delete as "verify FAILED". There is
-    # nothing left to verify after a deletion.
+    # `mutates` is the declaration that this call changes the world, and this
+    # one deletes a file — it used to say mutates=False, which kept it out of
+    # the pipeline entirely and therefore out of undo accounting too, even
+    # though the handler had been snapshotting the file all along. The old
+    # reason for False was the automatic post-write verify pass, which is now
+    # the separate `verify` field: a file that no longer exists has no syntax
+    # to check, so that is what is switched off here, not the mutation.
     grant="fs.write",
     risk="soft",
-    mutates=False,
+    mutates=True,
+    verify=(),
 )
 def delete_file(ctx, args):
     p = ctx.workspace.resolve(args["path"], must_exist=True)
@@ -748,6 +854,7 @@ def run_command(ctx, args):
     grant="exec",
     risk="read",
     needs_grant="shell",
+    sandboxed=True,
 )
 def syntax_check(ctx, args):
     p = ctx.workspace.resolve(args["path"], must_exist=True)
@@ -818,6 +925,7 @@ def syntax_check(ctx, args):
     risk="soft",
     mutates=True,
     needs_grant="shell",
+    sandboxed=True,
 )
 def format_file(ctx, args):
     p = ctx.workspace.resolve(args["path"], must_exist=True)
@@ -854,6 +962,7 @@ def format_file(ctx, args):
     grant="exec",
     risk="read",
     needs_grant="shell",
+    sandboxed=True,
 )
 def lint(ctx, args):
     p = ctx.workspace.resolve(args["path"], must_exist=True)
@@ -976,7 +1085,17 @@ def run_tests(ctx, args):
                 "doesn't support scoping to a path — omit path to run the full suite, "
                 "or use run_command with this runner's own scoping syntax",
             }
+    # A normal pytest run otherwise leaves __pycache__ and .pytest_cache in
+    # a freshly-created project. Those are runner artifacts, not deliverable
+    # defects, and previously made the later quality gate fail before the
+    # agent could finish without asking to run an rm command. Keep routine
+    # test execution clean at the source.
+    pytest_run = argv[:3] == ["python3", "-m", "pytest"]
+    if pytest_run:
+        argv += ["-p", "no:cacheprovider"]
     cmd = " ".join(shlex.quote(s) for s in argv)
+    if pytest_run:
+        cmd = "PYTHONDONTWRITEBYTECODE=1 " + cmd
     r = sandbox.run(
         cmd,
         ctx.workspace.root,
@@ -2099,6 +2218,18 @@ def _checkpoint_subject(ctx, args):
     grant="fs.write",
     risk="soft",
     mutates=True,
+    # The restored file is the one thing here worth checking: a checkpoint can
+    # legitimately hold content from before a later edit broke it, and putting
+    # that back is exactly when the loop should run a syntax pass. The target
+    # comes from the result rather than the arguments (this schema has no
+    # `path`), which is why verify() falls back to result["path"].
+    verify=("syntax", "lint"),
+    # Known gap, stated rather than papered over: a restore is itself not
+    # undoable. Snapshotting the target before overwriting it would mean
+    # snapshotting a snapshot, and the manifest entry being consumed already
+    # records what the pre-restore state was — so the information exists, but
+    # nothing exposes it as a second-level undo today.
+    undo=False,
     subject=_checkpoint_subject,
 )
 def checkpoint_restore(ctx, args):
@@ -2253,11 +2384,7 @@ def _launch_command_for_entry(entry):
     launching a console app with no visible output."""
     exe = re.sub(r"\s*%[fFuUdDnNickvm]", "", entry["exec"]).strip()
     if entry.get("terminal"):
-        term = (
-            shutil.which("konsole")
-            or shutil.which("alacritty")
-            or shutil.which("xterm")
-        )
+        term = shutil.which("ghostty")
         if not term:
             return None
         exe = f"{Path(term).name} -e sh -c {shlex.quote(exe)}"
@@ -2344,16 +2471,12 @@ def launch_app(ctx, args):
         # rather than failing, which is worse than reporting the real
         # limitation plainly, per this runtime's own stated principle.
         if match.get("terminal"):
-            term = (
-                shutil.which("konsole")
-                or shutil.which("alacritty")
-                or shutil.which("xterm")
-            )
+            term = shutil.which("ghostty")
             if not term:
                 return {
                     "ok": False,
                     "error": f"{match['name']} needs a terminal to run, and "
-                    "no terminal emulator (konsole/alacritty/xterm) is installed",
+                    "Ghostty is not installed",
                 }
             exe = f"{Path(term).name} -e sh -c {shlex.quote(exe)}"
         try:
@@ -2952,16 +3075,31 @@ def wait_for_screen_change(ctx, args):
         },
         "required": ["before_path"],
     },
-    grant="screen",
+    # fs.read, not screen: this tool's risky half is not the capture (that is
+    # gated by needs_grant below) but the caller-supplied file, which goes
+    # straight into ImageMagick's argv as a path to open. Judged as `screen`
+    # it inherited that grant's blanket auto `**`, so a path outside the
+    # workspace — /etc/shadow, ~/.ssh/id_rsa, an https:// URL on builds whose
+    # ImageMagick has coders for them — was auto-approved with no prompt. As
+    # fs.read it gets the same $HOME-scoped auto/prompt split every other tool
+    # that opens a caller-named file gets, and the handler's resolve() below
+    # is the actual containment.
+    grant="fs.read",
     risk="read",
     needs_grant="screen",
+    subject=("before_path",),
 )
 def assert_region_changed(ctx, args):
     if not ctx.grants.get("screen"):
         return {"ok": False, "error": "screen grant disabled"}
-    before_path = Path(args["before_path"])
+    try:
+        before_path = ctx.workspace.resolve(args["before_path"], must_exist=True)
+    except FileNotFoundError:
+        return {"ok": False, "error": f"before_path not found: {args['before_path']}"}
+    except PermissionError as exc:
+        return {"ok": False, "error": f"before_path rejected: {exc}"}
     if not before_path.is_file():
-        return {"ok": False, "error": f"before_path not found: {before_path}"}
+        return {"ok": False, "error": f"before_path is not a file: {before_path}"}
 
     timeout = float(args.get("timeout", 0.2))
     if timeout > 0:
@@ -3131,6 +3269,7 @@ def activate_window(ctx, args):
     grant="input",
     risk="soft",
     needs_grant="input",
+    spawn_arg="command",
 )
 def focus_or_launch(ctx, args):
     if not ctx.grants.get("input"):

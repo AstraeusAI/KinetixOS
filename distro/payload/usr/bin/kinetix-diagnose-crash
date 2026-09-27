@@ -1,0 +1,61 @@
+#!/usr/bin/env bash
+# kinetix-diagnose-crash — gather everything needed to diagnose a crash and
+# print it as one packet.
+#
+# The shell's crash notification ("Diagnose with agent") calls this and hands
+# the output to the agent; the same packet is what a human gets from the
+# command line. Gathering in one place means the agent and the person are
+# looking at identical facts.
+#
+# With no argument it uses the most recent crash. The backtrace is truncated
+# because a freedesktop coredump backtrace is long enough to blow a context
+# budget on its own; the full log stays in the journal and in the notification
+# card's captured copy.
+set -Eeuo pipefail
+
+MAX_BACKTRACE_LINES=40
+
+pid="${1:-}"
+
+if ! command -v coredumpctl >/dev/null 2>&1; then
+    printf 'kinetix-diagnose-crash: coredumpctl is not available (systemd-coredump not installed)\n' >&2
+    exit 1
+fi
+
+if [[ -z "$pid" ]]; then
+    # `coredumpctl list -n1 --no-pager` prints a header then the newest row;
+    # column 5 is the PID.
+    pid="$(coredumpctl list -n1 --no-pager 2>/dev/null | awk 'NR==2 {print $5}')"
+    if [[ -z "$pid" || "$pid" == "PID" ]]; then
+        printf 'kinetix-diagnose-crash: no coredumps recorded\n' >&2
+        exit 1
+    fi
+fi
+
+[[ "$pid" =~ ^[0-9]+$ ]] || { printf 'kinetix-diagnose-crash: invalid PID %q\n' "$pid" >&2; exit 2; }
+
+info="$(coredumpctl info "$pid" --no-pager 2>/dev/null || true)"
+if [[ -z "$info" ]]; then
+    printf 'kinetix-diagnose-crash: no coredump for pid %s\n' "$pid" >&2
+    exit 1
+fi
+
+# The fields worth surfacing first, so both reader and model get the shape of
+# the failure before the stack.
+field() { printf '%s' "$info" | grep -m1 -E "^[[:space:]]*$1:" | sed -E "s/^[[:space:]]*$1:[[:space:]]*//" || true; }
+
+cat <<EOF
+A process crashed on this KinetixOS system. Establish the facts from the
+report below, decide whether it is a KinetixOS bug worth reporting upstream,
+and say plainly if it is instead a bug in the application itself or an
+out-of-memory kill.
+
+Executable: $(field Executable)
+PID:        $pid
+Signal:     $(field Signal)
+Timestamp:  $(field Timestamp)
+Command:    $(field Command)
+
+── coredumpctl info (backtrace truncated to $MAX_BACKTRACE_LINES lines) ──
+$(printf '%s\n' "$info" | head -n "$MAX_BACKTRACE_LINES")
+EOF

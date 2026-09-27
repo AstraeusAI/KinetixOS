@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+/usr/bin/pacman-key --init
+/usr/bin/pacman-key --populate archlinux cachyos
+
+# KinetixOS's own signing key, baked into the live root so the [kinetix] repo
+# can be verified before the keyring package is installed on a target. Skipped
+# when the public key is absent — a build made before the signing key existed
+# still boots, it just cannot use the repo yet.
+if [[ -s /usr/share/pacman/keyrings/kinetix.gpg ]]; then
+    /usr/bin/pacman-key --populate kinetix
+fi

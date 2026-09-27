@@ -27,6 +27,10 @@ Item {
             fillMode: Image.PreserveAspectCrop
             asynchronous: true
             mipmap: true
+            // Cap decode size: without this a 4K wallpaper widget decodes the
+            // full image (~33MB RAM + VRAM) to draw a ~300px tile.
+            sourceSize.width: img.width * 2
+            sourceSize.height: img.height * 2
             onStatusChanged: {
                 if (img.status === Image.Error) {
                     console.warn("ImageWidget: failed to load " + root.imgPath + " - " + img.errorString);

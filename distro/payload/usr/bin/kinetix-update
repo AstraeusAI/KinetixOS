@@ -1,0 +1,187 @@
+#!/usr/bin/env bash
+# kinetix-update — bring the whole system up to date, in one transaction you
+# can roll back.
+#
+# The order is the whole point, and each step exists because of a failure it
+# prevents:
+#
+#   1. snapshot   A bad package or a bad migration should be recoverable by a
+#                 reboot, not a reinstall. Taken before anything is touched.
+#   2. pacman -Syu  Arch + CachyOS + the Kinetix repo, in one transaction. Not
+#                 `pacman -Sy` first: a partial upgrade of a rolling distro is
+#                 how systems break.
+#   3. migrations   Kinetix's own config/data changes that packages cannot
+#                 express — the config the shell reads lives in the user's
+#                 home, not in /usr, so a package upgrade cannot move it.
+#
+# There is deliberately no `pacman -Syu` shortcut documented anywhere: running
+# it by hand skips steps 1 and 3. `kinetix update` is the supported path.
+set -Eeuo pipefail
+
+# Kept before option parsing so the sudo re-exec can pass the ORIGINAL
+# arguments back: the parse loop shifts, so "$@" is empty by then.
+ORIG_ARGS=("$@")
+
+STATE_DIR="${KINETIX_STATE_DIR:-/var/lib/kinetix}"
+CACHE="${KINETIX_UPDATE_CACHE:-/run/kinetix/updates.json}"
+PACMAN="${KINETIX_PACMAN:-pacman}"
+SELF_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+
+ASSUME_YES=0
+DO_SNAPSHOT=1
+DRY_RUN=0
+while (( $# )); do
+    case "$1" in
+        -y|--yes) ASSUME_YES=1 ;;
+        --no-snapshot) DO_SNAPSHOT=0 ;;
+        --dry-run) DRY_RUN=1 ;;
+        -h|--help)
+            printf 'usage: kinetix update [--yes] [--no-snapshot] [--dry-run]\n'
+            printf '  --yes           pass --noconfirm to pacman (unattended)\n'
+            printf '  --no-snapshot   skip the pre-update rollback snapshot\n'
+            printf '  --dry-run       print the plan without changing anything\n'
+            exit 0 ;;
+        *) printf 'kinetix update: unknown option %q\n' "$1" >&2; exit 2 ;;
+    esac
+    shift
+done
+
+say() { printf '\033[1;31m==>\033[0m %s\n' "$*"; }
+note() { printf '    %s\n' "$*"; }
+
+run() {
+    if (( DRY_RUN )); then
+        printf '    [dry-run] %s\n' "$*"
+    else
+        "$@"
+    fi
+}
+
+die() { printf 'kinetix update: %s\n' "$*" >&2; exit 1; }
+
+# ── privilege ────────────────────────────────────────────────────────────────
+# Everything below writes to the system. Re-exec through sudo once, up front,
+# so the whole transaction is a single authenticated action rather than
+# scattered prompts. --dry-run never needs it.
+if (( ! DRY_RUN )) && (( EUID != 0 )); then
+    if command -v sudo >/dev/null 2>&1; then
+        exec sudo -- "$0" "${ORIG_ARGS[@]}"
+    fi
+    die "must run as root (sudo is not installed)"
+fi
+
+# ── one update at a time ─────────────────────────────────────────────────────
+# Two concurrent pacman transactions corrupt the database; this is the guard
+# pacman itself does not provide across an orchestrated sequence.
+if (( ! DRY_RUN )); then
+    mkdir -p -- "$STATE_DIR"
+    exec 9>"$STATE_DIR/update.lock"
+    if ! flock -n 9; then
+        die "another update is already running (lock: $STATE_DIR/update.lock)"
+    fi
+fi
+
+current_version() {
+    local vf=/usr/share/kinetix/version
+    [[ -r "$vf" ]] && printf '%s' "$(<"$vf")" || printf 'unknown'
+}
+
+say "KinetixOS $(current_version) — updating"
+
+# ── 1. snapshot ──────────────────────────────────────────────────────────────
+snapshot_id=""
+if (( DO_SNAPSHOT )); then
+    if [[ -x "$SELF_DIR/kinetix-snapshot" ]]; then
+        say "Taking a rollback snapshot"
+        if (( DRY_RUN )); then
+            run "$SELF_DIR/kinetix-snapshot" "pre-update"
+        else
+            # A snapshot that cannot be taken is a reason to stop, not to
+            # proceed unprotected — the caller can pass --no-snapshot to say
+            # they accept that. `kinetix-snapshot` exits non-zero with the
+            # specific reason (no btrfs, no snapper) for the message.
+            if snapshot_id="$("$SELF_DIR/kinetix-snapshot" "pre-update")"; then
+                note "snapshot: $snapshot_id"
+            else
+                die "could not take a rollback snapshot; re-run with --no-snapshot to update anyway"
+            fi
+        fi
+    else
+        note "no kinetix-snapshot helper found; skipping snapshot"
+    fi
+else
+    note "snapshot skipped (--no-snapshot)"
+fi
+
+# ── 2. packages ──────────────────────────────────────────────────────────────
+# A system installed before the packaging existed has the payload as loose,
+# unowned files. `pacman -Syu` never installs a package that was not already
+# installed, so without this step those files would never come under package
+# management and could never be updated. This claims them on the first update:
+# --overwrite because the files are present but unowned, and the globs are
+# scoped to exactly the paths this package ships so nothing else is touched.
+# Non-fatal: an unreachable repo should not block updating the OS packages.
+adopt_kinetix() {
+    if "$PACMAN" -Qq kinetix >/dev/null 2>&1; then
+        return 0
+    fi
+    if [[ ! -d /usr/share/kinetix/shell ]]; then
+        return 0   # nothing to adopt; the package will be installed normally
+    fi
+    say "Adopting KinetixOS into package management (first update)"
+    local ow=(
+        --overwrite '/usr/share/kinetix/*'
+        --overwrite '/usr/bin/kinetix*'
+        --overwrite '/etc/pacman.d/kinetix-mirrorlist'
+        --overwrite '/usr/share/backgrounds/kinetixos/*'
+        --overwrite '/usr/share/wayland-sessions/kinetix.desktop'
+        --overwrite '/etc/sysctl.d/99-kinetix-performance.conf'
+        --overwrite '/etc/udev/rules.d/60-kinetix-ioscheduler.rules'
+        --overwrite '/etc/systemd/zram-generator.conf'
+        --overwrite '/etc/systemd/system.conf.d/0?-kinetix*'
+        --overwrite '/etc/systemd/user.conf.d/0?-kinetix*'
+        --overwrite '/etc/tmpfiles.d/thp.conf'
+    )
+    if ! run "$PACMAN" -S --needed --noconfirm "${ow[@]}" kinetix kinetix-keyring; then
+        note "could not adopt the KinetixOS package (repo unreachable?);"
+        note "the desktop keeps running from the installed files and will retry next update"
+    fi
+}
+
+kernels_before="$("$PACMAN" -Q 2>/dev/null | grep -E '^linux-cachyos[^ ]* ' || true)"
+
+adopt_kinetix
+
+say "Updating packages ($PACMAN -Syu)"
+if (( ASSUME_YES )); then
+    run "$PACMAN" -Syu --noconfirm
+else
+    run "$PACMAN" -Syu
+fi
+
+kernels_after="$("$PACMAN" -Q 2>/dev/null | grep -E '^linux-cachyos[^ ]* ' || true)"
+
+# ── 3. migrations ────────────────────────────────────────────────────────────
+say "Running KinetixOS migrations"
+if [[ -x "$SELF_DIR/kinetix-migrations" ]]; then
+    run "$SELF_DIR/kinetix-migrations" run
+else
+    note "no kinetix-migrations helper found; skipping"
+fi
+
+# ── housekeeping ─────────────────────────────────────────────────────────────
+# Clear the shell's badge immediately rather than letting it show a stale
+# count until the next automatic check.
+if (( ! DRY_RUN )) && [[ -e "$CACHE" ]]; then
+    rm -f -- "$CACHE" 2>/dev/null || true
+fi
+
+printf '\n'
+say "Update complete — KinetixOS $(current_version)"
+if [[ "$kernels_before" != "$kernels_after" ]]; then
+    note "the kernel changed; reboot to run the new one:"
+    printf '      %s\n' $kernels_after
+fi
+if [[ -n "$snapshot_id" ]]; then
+    note "if anything is wrong, roll back to: $snapshot_id"
+fi

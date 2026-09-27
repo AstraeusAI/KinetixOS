@@ -1,9 +1,12 @@
 import QtQuick
+import Quickshell
+import Quickshell.Wayland
 import "../common"
 
 // Shared exit control for every Argus surface: launcher, palette, agent
-// panel, widget catalog, widget settings, sys popup, notification toasts.
-// Google-style: soft circle, hover lifts + tints danger, press springs in.
+// panel, widget catalog, widget settings, sys popup, notification toasts,
+// taskbar preview cards. Google-style: soft circle, hover lifts + tints
+// danger, press springs in.
 Rectangle {
     id: root
     property string glyph: "✕"
@@ -41,5 +44,63 @@ Rectangle {
         hoverEnabled: true
         cursorShape: Qt.PointingHandCursor
         onClicked: root.clicked()
+    }
+
+    // ── tooltip ──────────────────────────────────────────────────
+    // `tip` was declared but never actually wired to anything — no
+    // CloseButton anywhere ever showed one. A real Quickshell PopupWindow,
+    // not the built-in QtQuick.Controls ToolTip: this component lives
+    // inside PanelWindow (wlr-layer-shell) surfaces throughout the shell,
+    // where that control renders on top of its target instead of above it
+    // and eats the click (see shell/components/IconButton.qml and
+    // shell/taskbar/Taskbar.qml for the same fix applied first).
+    // root.Window.window resolves to whichever surface actually hosts
+    // this instance, so it works generically everywhere CloseButton is
+    // used.
+    Timer {
+        id: tipDelay
+        interval: 500
+        onTriggered: tipPopup.shown = true
+    }
+    Connections {
+        target: ma
+        function onContainsMouseChanged() {
+            if (ma.containsMouse && root.tip.length > 0) {
+                tipDelay.restart();
+            } else {
+                tipDelay.stop();
+                tipPopup.shown = false;
+            }
+        }
+    }
+    PopupWindow {
+        id: tipPopup
+        property bool shown: false
+        anchor.window: root.Window.window
+        anchor.item: root
+        anchor.edges: Edges.Top
+        anchor.gravity: Edges.Top
+        anchor.adjustment: PopupAdjustment.Slide
+        anchor.margins.bottom: 6
+        visible: shown && root.Window.window !== null
+        color: "transparent"
+        implicitWidth: tipText.implicitWidth + 16
+        implicitHeight: tipText.implicitHeight + 10
+
+        Rectangle {
+            anchors.fill: parent
+            radius: Theme.rS
+            color: Theme.glassBaseHigh
+            border.width: 1
+            border.color: Theme.alpha(Theme.crimsonText, 0.35)
+
+            Text {
+                id: tipText
+                anchors.centerIn: parent
+                text: root.tip
+                color: Theme.text
+                font { family: Theme.fontMono; pixelSize: Theme.tMicro }
+            }
+        }
     }
 }

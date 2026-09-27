@@ -1,0 +1,12 @@
+post_install() {
+    # Populate the just-installed public key into pacman's local keyring.
+    # Idempotent; the hook below runs it again after every keyring upgrade.
+    pacman-key --populate kinetix 2>/dev/null || true
+    printf 'KinetixOS package signing key installed.\n'
+}
+
+post_upgrade() {
+    # A rotated or added key must be trusted before the next sync, so this
+    # runs on upgrade too, not just install.
+    post_install
+}

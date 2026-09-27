@@ -53,11 +53,11 @@ PanelWindow {
     readonly property color pDanger: Theme.alarm        // alarm — blocked/error, the coldest, most saturated red here
     readonly property color pWarn: Theme.gilded         // gilded amber — caution, reasoning/thinking (yellow-shifted so it can't be mistaken for ember at pip size)
     readonly property color pGlowDeep: Theme.glowDeep   // near-black maroon — deepest gradient/shadow stop
-    readonly property color pWell: "#170A0A"      // warm-dark inset fill — plan cards, idle pills (vs cool Theme.surface)
-    readonly property color pAct: "#D9432E"       // hot vermilion — "act" step in the perceive→verify feed
-    readonly property color pVerify: "#C25A33"    // rust — "verify" step; lifted from #8C2F1F for 4.6:1 legibility
-    readonly property color pBubbleTop: "#180A0C"    // agent text bubble — top of the wash gradient
-    readonly property color pBubbleBottom: "#0D0405" // agent text bubble — bottom of the wash gradient
+    readonly property color pWell: "#1C0A0E"      // warm-dark inset fill — plan cards, idle pills (vs cool Theme.surface)
+    readonly property color pAct: "#E03222"       // hot vermilion — "act" step in the perceive→verify feed
+    readonly property color pVerify: "#D46033"    // rust — "verify" step; lifted from #8C2F1F for 4.6:1 legibility
+    readonly property color pBubbleTop: "#220B11"    // agent text bubble — top of the wash gradient
+    readonly property color pBubbleBottom: "#110407" // agent text bubble — bottom of the wash gradient
 
     property bool settingsOpen: AgentState.settingsOpen
     property string keyDraft: ""
@@ -436,29 +436,10 @@ PanelWindow {
                     }
 
                     // Panel Close Button
-                    Rectangle {
-                        width: 28; height: 28
-                        radius: 14
-                        color: closeMa.containsMouse ? Theme.alpha(pDanger, 0.18) : "transparent"
-                        border.width: 1
-                        border.color: closeMa.containsMouse ? Theme.alpha(pDanger, 0.4) : Theme.stroke
-                        Behavior on color { ColorAnimation { duration: Theme.durFast } }
-
-                        Text {
-                            anchors.centerIn: parent
-                            text: "✕"
-                            font { family: Theme.fontMono; pixelSize: 10 }
-                            color: closeMa.containsMouse ? pDanger : Theme.textDim
-                            Behavior on color { ColorAnimation { duration: Theme.durFast } }
-                        }
-
-                        MouseArea {
-                            id: closeMa
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: AgentState.panelOpen = false
-                        }
+                    CloseButton {
+                        box: 28
+                        tip: "Close panel"
+                        onClicked: AgentState.panelOpen = false
                     }
                 }
             }
@@ -1004,7 +985,7 @@ PanelWindow {
                                         border.color: Theme.alpha(pAccent, 0.28)
 
                                         SequentialAnimation on scale {
-                                            running: emptyPromptState.visible
+                                            running: emptyPromptState.visible && win.visible   // item visibility ignores the hidden window; without this it ran forever off-screen
                                             loops: Animation.Infinite
                                             NumberAnimation { from: 0.95; to: 1.06; duration: 2400; easing.type: Easing.InOutSine }
                                             NumberAnimation { from: 1.06; to: 0.95; duration: 2400; easing.type: Easing.InOutSine }
@@ -1023,6 +1004,7 @@ PanelWindow {
                                         anchors.centerIn: parent
                                         scale: 1.4
                                         live: true
+                                        animate: win.visible
                                     }
                                 }
 

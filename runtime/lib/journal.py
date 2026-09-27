@@ -489,9 +489,20 @@ def context(db, session, ws_info=None, step_info=None):
         [k for k, _ in fetched], len(fetched) - MAX_CONTEXT_EVENTS
     )
     e = fetched[start:]
-    messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+    # The `cache` tier on each system message is what lets the Anthropic
+    # adapter place prompt-cache breakpoints where the content stops changing
+    # (see adapters.anthropic_system_blocks). It is metadata only — every
+    # other adapter ignores it, and OpenAI/OpenRouter cache the prefix
+    # automatically without being told.
+    #
+    # "stable" = cannot change for the life of a task; "semi" = changes
+    # rarely, so a second breakpoint over this band pays for itself across
+    # the steps between changes. Anything past the last breakpoint is outside
+    # both cache units, which is why the step-budget notice below can change
+    # every step without invalidating either.
+    messages = [{"role": "system", "content": SYSTEM_PROMPT, "cache": "stable"}]
     if ws_info:
-        messages.append({"role": "system", "content": ws_info})
+        messages.append({"role": "system", "content": ws_info, "cache": "stable"})
     # Genuinely cross-session (the `memories` table has no session column) —
     # unlike the per-session summaries block right below, this is visible
     # from every future session too, which is the entire point of
@@ -505,6 +516,7 @@ def context(db, session, ws_info=None, step_info=None):
                 "content": "Remembered facts (from past sessions, "
                 "via remember_fact or automatic extraction):\n"
                 + "\n".join(f"- {m['text']}" for m in mems),
+                "cache": "semi",
             }
         )
     if s:
@@ -513,6 +525,7 @@ def context(db, session, ws_info=None, step_info=None):
                 "role": "system",
                 "content": "This conversation so far "
                 "(condensed, this session only):\n" + "\n".join(x[0] for x in s),
+                "cache": "semi",
             }
         )
     # Pinned anchors: sourced from session_state, not the rolling event
@@ -526,6 +539,7 @@ def context(db, session, ws_info=None, step_info=None):
                 "role": "system",
                 "content": "Current task — stay on this, do not "
                 "drift into unrelated work: " + current_task,
+                "cache": "semi",
             }
         )
     todos_raw = get_state(db, session, "todos")
@@ -545,6 +559,7 @@ def context(db, session, ws_info=None, step_info=None):
                     "content": "Current plan (update with todo_write "
                     "as steps complete; do not silently abandon pending items):\n"
                     + lines,
+                    "cache": "semi",
                 }
             )
     no_images = get_state(db, session, "no_image_support") == "1"

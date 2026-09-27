@@ -1,12 +1,31 @@
 # 02 — Design System
 
-The bar for Argus is *film-prop quality*: every surface should feel
-deliberate. This file is the contract between design intent and the QML
-tokens in `shell/common/Theme.qml`.
+KinetixOS desktop design follows the supplied `kinetixOS.png` reference. This file is the contract between that visual direction and the QML tokens in `shell/common/Theme.qml`.
+
+## KinetixOS visual north star
+
+![KinetixOS desktop visual reference](../kinetixOS.png)
+
+This image is the authoritative guide for the complete desktop environment—not only its wallpaper. It defines the KinetixOS identity, atmosphere, visual hierarchy, and placement of shell surfaces. Where older Argus-era guidance below conflicts with the image, this section wins; update the conflicting token/component guidance before using it for new design work.
+
+Translate the reference into the responsive Quickshell desktop:
+
+- **Atmosphere:** cinematic near-black landscape, restrained detail, and generous quiet space around the central KINETIX identity.
+- **Brand:** KINETIX/KinetixOS wordmark and crimson-red light are the primary identity. Do not reintroduce violet/teal as the desktop's competing brand palette.
+- **Composition:** preserve the slim top status/workspace bar; a full-width, bottom-docked taskbar (`shell/taskbar/`, the conventional Windows/Cinnamon/KDE shape) provides the application-launcher button and live window management; keep an open central wallpaper/wordmark field and subtle corner taglines. Do not show desktop widgets by default. The existing widget framework is opt-in only.
+- **Materials:** dark glass, subtle keylines, soft red illumination, and high-contrast white/gray type. Red is a deliberate signal, not a wash applied to every surface.
+- **Responsive behavior:** preserve the same hierarchy at different resolutions and scale factors; reflow or hide secondary cards on constrained screens instead of shrinking the whole mockup or covering the central workspace.
+- **Meaning and accessibility:** preserve readable contrast and distinguish meaningful states (idle, active, warning, blocked). Semantic colors may supplement the red identity when needed for clarity, but must remain restrained and consistent.
+
+The screenshot is a visual north star, not a fixed-pixel template: use its composition and hierarchy while keeping live content, accessibility, multi-monitor layouts, and user settings functional.
+
+### Protected Kinetix Quickshell bar
+
+The existing bar in `shell/bar/Bar.qml` and its supporting components is the canonical, primary KinetixOS bar. Keep it as the main bar and preserve its app launcher, Ghostty quick terminal, workspaces, telemetry popup, tray/media controls, agent surface, and App Center actions. User-authorized visual refinement may simplify surfaces and adapt presentation to screen width, but must not remove controls, their state/data bindings, or popup access. Do not replace the bar or let other desktop surfaces cover its hit targets; verify each preserved action after a visual pass.
 
 ## Color
 
-Near-black canvas, white typography, **one** accent.
+Near-black canvas, white typography, **crimson red** as the primary brand accent.
 
 | Token | Value | Use |
 |---|---|---|
@@ -19,36 +38,35 @@ Near-black canvas, white typography, **one** accent.
 | `text` | `white @ 92%` | primary |
 | `textDim` | `white @ 60%` | secondary |
 | `textFaint` | `white @ 38%` | captions, timestamps |
-| `accent` | `#8A7CFF` | iris — agent identity, primary actions |
-| `accent2` | `#5EEAD4` | teal — gradient partner, "ok" states |
+| `accent` | `#E01A3C` | Kinetix crimson — primary brand identity and active surfaces |
+| `accent2` | `#FF4D6D` | lifted crimson — high-contrast brand text and glyphs |
 | `warn` | `#FFB454` | needs-attention |
 | `danger` | `#FF6B6B` | destructive, panic |
 
-Signature gradient: `accent → accent2`, used *only* for agent-presence
-elements (EdgeGlow, StatusOrb ring, active workspace dot). Never on buttons
-or text — restraint is what makes it feel expensive.
+Signature treatment: crimson illumination against near-black, used sparingly
+for Kinetix identity and active-agent presence (EdgeGlow, StatusOrb ring,
+active workspace marker). Keep text readable and avoid a competing violet/teal
+brand gradient; restraint is what makes the red feel intentional.
 
-### Agent Panel palette (deliberate exception)
+### Agent Panel palette
 
-The Agent Panel is the one surface where the agent holds full authority
-(computer-use, shell, destructive actions), so it carries its own palette —
-a darker, single-hue crimson family defined in
-`shell/agent/AgentPanel.qml` (`pAccent*` tokens). Everything else keeps the
-iris/teal accents above. The temperature inversion (cool OS, warm panel) is
-the point: the panel should read as a different room. The restraint rule
-still applies *inside* the panel: one hue family, never a rainbow.
+The Agent Panel shares the Kinetix crimson identity with the rest of the
+desktop. Its deeper crimson, ember, amber, and alarm tokens distinguish
+interaction and safety states—not a separate brand or visual room. The
+restraint rule applies throughout: one coherent crimson-led family, with
+semantic colors only where they communicate meaning.
 
 | Token | Value | Use |
 |---|---|---|
-| `pAccent` | `#B3283A` | crimson — borders, focus, bars, hovers, identity |
-| `pAccentText` | `#D6556A` | crimson lifted for text/glyphs (≥4.5:1 on both washes) |
-| `pAccent2` | `#E8752E` | ember — glow, live pulses, "ok" |
+| `pAccent` | `#E01A3C` | vibrant crimson — borders, focus, bars, hovers, identity |
+| `pAccentText` | `#FF4D6D` | radiant crimson lifted for text/glyphs (≥4.5:1 on both washes) |
+| `pAccent2` | `#FF7324` | ember — glow, live pulses, "ok" |
 | `pWarn` | `#C98F2E` | gilded amber — caution, reasoning (yellow-shifted so it can't be mistaken for ember at pip size) |
 | `pDanger` | `#FF2E43` | alarm — blocked/error |
-| `pGlowDeep` | `#2A070C` | deepest gradient/shadow stop |
-| `pWell` | `#170A0A` | warm-dark inset fill — plan cards, idle pills |
-| `pAct` | `#D9432E` | hot vermilion — "act" step in the perceive→verify feed |
-| `pVerify` | `#C25A33` | rust — "verify" step (4.6:1 on panel base) |
+| `pGlowDeep` | `#3D0711` | deepest gradient/shadow stop |
+| `pWell` | `#1C0A0E` | warm-dark inset fill — plan cards, idle pills |
+| `pAct` | `#E03222` | hot vermilion — "act" step in the perceive→verify feed |
+| `pVerify` | `#D46033` | rust — "verify" step (4.6:1 on panel base) |
 
 Rules:
 
@@ -56,14 +74,13 @@ Rules:
   Anything textual — labels, glyphs, status text — uses `pAccentText`.
 - `pWarn` and `pAccent2` sit 15° apart in hue (38° vs 23°); warn is also
   less saturated. Never move one toward the other.
-- Panels of the same family may not reuse `Theme.accent` (violet) inside
-  the panel — see `TerminalCard.qml`.
-- Cross-surface note: the OS-level *semantic* agent states (StatusOrb,
-  EdgeGlow, approval banner, `Theme.statusColor()`) still use the iris/teal/
-  warn/danger mapping above — those colors carry meaning (working vs.
-  watching vs. blocked) and must stay distinguishable from each other, so
-  they are never swept into a single hue family. The panel's local mapping
-  (ok=ember, running=crimson, blocked=alarm) is panel-scoped.
+- Panels of the same family should use the shared Kinetix crimson tokens
+  (`Theme.crimson`/`Theme.crimsonText`) rather than inventing a new brand hue.
+- Cross-surface semantic agent states stay consistent: idle/ok is subdued
+  neutral, working is crimson, awaiting approval is amber, and blocked/error
+  is alarm red. Use labels/icons as well as color so states remain legible.
+  Panel-specific ember/verify shades may distinguish action-feed categories,
+  but do not create a second brand palette.
 
 ### Main bar palette
 
@@ -76,23 +93,33 @@ bar-only tweak):
 
 | Token | Value | Use |
 |---|---|---|
-| `barBase` | near-black oxblood, 98% | the bar's own glass base |
-| `barBaseHigh` | lighter oxblood, 97% | resting pill-capsule base — a shade lifted off the bar so pills still read as cut into the glass |
-| `barStroke` | crimson @ 22% | inner keyline, resting pill hairline |
-| `barStrokeStrong` | alarm @ 40% | hover border |
-| `barHoverGlow` | crimson @ 16% | hovered (non-active) pill base wash |
+| `barBase` | translucent dark oxblood, 74% (`Qt.rgba(0.065, 0.010, 0.018, 0.74)`) | the bar's own glassmorphic base slab — frosted by KWin desktop blur |
+| `barBaseHigh` | elevated translucent wine-oxblood, 62% (`Qt.rgba(0.135, 0.020, 0.035, 0.62)`) | resting pill-capsule base — lifted off the bar as sculpted optical crystal lenses |
+| `barHoverGlow` | crimson @ 28% | hovered (non-active) pill wash |
+| `barStroke` | crimson @ 38% | inner keyline, resting pill hairline |
+| `barStrokeStrong` | alarm @ 60% | active/hovered focus border |
 
-This was a deliberate widening of the panel's crimson identity onto the bar
-that carries it — the AGENT pill no longer has to be the bar's *only* red
-element to make sense. Two things stay unchanged on purpose:
+The bar elevates the glassmorphic identity into a high-fidelity physical optical system:
+- **Translucency & Frosted Substrate**: 74% oxblood base allows desktop wallpaper and background windows to diffuse through via KWin compositor blur.
+- **Volumetric Optical Meniscus**: 5px sub-surface top shadow creating authentic glass bevel thickness.
+- **Prismatic Directional Bevels**: Continuous 1px perimeter gradient frames around capsules catching overhead grazing light (`Qt.rgba(1, 1, 1, 0.32–0.55)`) on top and crimson laser reflection on bottom.
+- **Convex Cylindrical Lens Dome Highlights**: Upper 48% vertical gradient highlight simulating 3D optical lens dome curvature.
+- **Micro-Chamfers & Specular Crests**: 7-stop overhead Fresnel hairline on the bar and 6-stop diamond-bright center crests on capsules.
 
-- The bottom laser rail (`FlowBand`, `mode: "bottomEdge"`) keeps its own
-  four-brand rainbow sweep animation untouched — it's a deliberate contrast
-  accent against the red glass, not a leftover to be retinted.
-- Specular highlights (the top micro-chamfer sheen on each pill, the bar's
-  overhead grazing-light bevel) stay white/bright. A real glossy surface's
-  specular reflection keeps the light source's color, not the substrate's —
-  tinting these red would read as flat colored plastic, not glass.
+### App Center palette
+
+The App Center popup inherits the same crimson treatment — it is package
+management authority, the same room as the agent panel:
+
+- Base `#0F0709`, warm maroon cards (`Qt.rgba(0.09, 0.043, 0.05, 0.75)`),
+  and a static crimson identity keyline under the header. Update counts may
+  animate only when package state changes; idle chrome stays quiet.
+- Source coding, all in-family: All = `crimsonText`, AUR = `alarm`,
+  Arch = `ember`, Flathub = `gilded`. Engine badges reuse their source's
+  color (paru/yay → `alarm`, pacman → `ember`, flatpak → `gilded`).
+- Update-pending = `gilded`, up-to-date/installed = `ember`,
+  destructive hover = `alarm`, selection/focus = `crimson` (borders) and
+  `crimsonText` (small text).
 
 Glass: panels are translucent surfaces + 1px stroke + faint top highlight.
 On KWin, enable the Blur desktop effect for true frosted glass; the tokens
@@ -111,7 +138,7 @@ are chosen so panels still read well unblurred.
 | `tTitle` | 14 | semibold | panel titles |
 | `tDisplay` | 18 | medium | clock, hero numbers |
 
-Tracking: +2% on all-caps microcopy (`ARGUS`, status labels). Never letter-
+Tracking: +2% on all-caps Kinetix microcopy (`KINETIX`, status labels). Never letter-
 space body text.
 
 ## Shape & space
@@ -175,17 +202,83 @@ are tuned so panels still read as premium glass without it. `QtQuick.Effects`
 (`MultiEffect`) is available for in-shell blur/colorization where a surface
 needs to blur its own content.
 
+### Bar capsule treatment (`BarBox.qml`)
+
+The bar uses the shared GlassPanel material for its base, stroke, and surface wash. Capsules add only a restrained hover wash, a low-key pressed response, and a crimson active state; avoid stacking separate bloom, bevel, and border layers. On narrow screens, compact telemetry and media metadata rather than shrinking type or letting the centered clock/search island overlap the side groups. The detailed telemetry popup and all control actions remain available.
+
+### Taskbar (`shell/taskbar/`)
+
+A full-width, bottom-docked bar (`Taskbar.qml`) — the conventional
+Windows/Cinnamon/KDE shape: flush rectangular (`radius: 0`), anchored
+`left/right/bottom`, `exclusiveZone: 56` so it reserves real screen space
+(windows tile above it, never behind it) rather than floating over
+content. Height matches the main bar (56px) for top/bottom symmetry.
+
+- **Launcher button** at the far left opens the same application drawer
+  every other surface opens (`AgentState.toggleLauncher()`) — one
+  launcher, not a second competing one.
+- **Live task buttons** (`TaskButton.qml`) sit in a horizontal, scrollable
+  row and group multiple windows of the same app under one icon;
+  left-click focuses/toggles-minimize, a grouped click cycles between
+  windows, middle-click closes, right-click opens a per-window menu
+  (focus/minimize/close, individual per-window close) via
+  `TaskPreview.qml`/the window-menu popup, both of which open **upward**
+  above the bar. Hovering opens a live preview card after a short delay.
+  The active app is marked with a bottom-edge underline (the
+  Windows/ChromeOS convention for a horizontal bar), not a left-edge bar.
+- **Show-desktop** button at the far right minimizes/restores every
+  window at once.
+- Icon and display-name resolution goes through `TaskStore.qml`, which
+  reuses `AppIndex` (the same desktop-file index the launcher already
+  uses) rather than inventing a second one.
+- Crimson/oxblood throughout (`GlassPanel`, `Theme.crimson`/`crimsonText`),
+  consistent with the main bar's material.
+
+### Application launcher (`shell/overlay/AppLauncher.qml`)
+
+Centered glass card over a dimmed scrim, opened by every launcher entry
+point (taskbar APPS/launcher button, bar grid button, command palette) —
+one drawer, never a competing one. Its presentation contracts live in
+`distro/tests/test_app_launcher_presentation.py`.
+
+- **Card body**: launcher-scoped `cardBase` (nearly opaque) so terminal
+  windows behind the overlay don't bleed text through the surface. The
+  same `cardTint()` feeds the category-row edge fades, so a fade can
+  never be a visibly different band.
+- **Section headers** (`FAVORITES`, `ALL APPLICATIONS` / search results)
+  end in a `SectionRule` hairline that fills the unused width instead of
+  leaving dead space; the old right-aligned grid-column readout is
+  developer telemetry and is gone.
+- **Category chips** scroll horizontally with left/right edge fades when
+  they overflow; per-chip counts and the crimson active state are
+  unchanged.
+- **App grid**: dark-glass tiles (rest ≈ 5% white gradient — remember
+  `Theme.alpha()` *replaces* the alpha channel, so `alpha(surfaceLow, 0.34)`
+  was a 34% white slab, not a 4.5% wash). Labels reserve two lines and
+  top-align so icons stay on one baseline across a row. A slim scroll
+  indicator in the right gutter shows there is more below the fold.
+- **Entrance**: each of the first screenful of cells plays its own
+  delayed fade+lift (`cellIn`, capped to the reveal window) rather than
+  every cell sharing one opacity ramp; delegates recreated while typing
+  see `appear === 1` and render statically so search never flickers.
+- **Footer**: one `footer` block (hairline rule + key hints) sized as a
+  unit, so the grid height subtracts a real item instead of a magic gap.
+- Launch, right-click pin, keyboard navigation, rescans, clear-search and
+  the empty state are unchanged.
+
 ### Component vocabulary
 
 | Component | Role |
 |---|---|
 | `GlassPanel` | the fidelity primitive — all surfaces |
-| `ArgusMark` | eye mark, breathing iris |
-| `StatusOrb` | state dot + pulse ring |
+| `BarBox` | shared glass capsule for bar controls, metrics, and indicators |
+| `Taskbar` | full-width bottom-docked task manager: app launcher button, live window buttons, hover previews |
+| `ArgusMark` (Kinetix mark) | Kinetix signal mark; crimson identity with restrained live-state motion |
+| `StatusOrb` | 3D glass jewel state orb + pulse ring |
 | `PillButton` | labelled pill action |
-| `IconButton` | compact glyph button (bar) |
+| `IconButton` | compact line/glyph button with delayed hover tooltip |
 | `Toggle` | switch |
-| `Sparkline` | Canvas line+fill graph for live data |
+| `Sparkline` | multi-pass Canvas line + underglow + fill graph with incandescent diamond head dot |
 
 ## Signature elements
 
@@ -201,9 +294,9 @@ anything except live agent control.
 
 ### StatusOrb
 
-6px dot + expanding ring. Color encodes state:
-`accent2` idle/ok · `accent` working · `warn` awaiting approval ·
-`danger` error/blocked. Ring pulses only while a state is *live*.
+6px dot + expanding ring. Color encodes state consistently:
+neutral idle/ok · crimson working · amber awaiting approval · alarm red
+error/blocked. Ring pulses only while a state is *live*.
 
 ### Agent Panel
 

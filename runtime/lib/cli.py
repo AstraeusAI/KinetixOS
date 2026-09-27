@@ -38,13 +38,25 @@ def doctor(workspace_root):
     recent_errors = [
         e for e in errlog.tail(200) if e.get("level") in ("WARNING", "ERROR")
     ][-10:]
+    # Probed once and shared: probing loads a KWin script and shells out
+    # several times, and the report is derived from the same map, so asking
+    # for it twice would double the cost of every `doctor` run — which the
+    # shell calls on every startup, and which the splash now waits on.
+    caps = kwin.capabilities()
     emit(
         {
             "python": sys.version.split()[0],
             "database": str(DB),
             "encrypted": False,
             "sandbox": sandbox.describe(),
-            "kwin": kwin.capabilities(),
+            "kwin": caps,
+            # The flat map above answers "can I do this". This answers "can I
+            # do this, and what will bite me" — the caveats are the host facts
+            # that used to be recoverable only by reading the source of the
+            # function you were currently debugging. It is the first thing to
+            # attach when an agent behaves confidently and wrongly, and the
+            # only description of the platform a third-party agent can read.
+            "kwin_report": kwin.capability_report(caps),
             "adapters": {
                 x: bool(shutil.which(x))
                 for x in ["grim", "ydotool", "wtype", "gdbus", "rg", "fd"]

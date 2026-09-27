@@ -14,11 +14,20 @@ from lib import daemon
 
 WORKER = '''#!/usr/bin/env python3
 import json, os, sys, time
+if sys.argv[1:2] == ["worker"]:
+    # mirrors argusd.py: a pre-started spare takes one job on stdin
+    job = json.loads(sys.stdin.readline())
+    os.environ.update(job.get("env") or {})
+    sys.argv = [sys.argv[0]] + job["argv"]
 op = sys.argv[1]
 if op == "run":
     task = sys.argv[sys.argv.index("--task") + 1]
     if task == "wait":
         time.sleep(30)
+    if task == "stream":
+        for i in range(3):
+            print(json.dumps({"type": "delta", "text": str(i), "t": time.time()}), flush=True)
+            time.sleep(0.3)
     print(json.dumps({"type": "result", "ok": True, "text": task,
                       "grant": os.getenv("ARGUS_GRANT_INPUT")}))
 elif op == "approve":
@@ -97,6 +106,63 @@ class DaemonTests(unittest.TestCase):
         self.assertFalse(thread.is_alive())
         messages = [json.loads(line) for line in output.getvalue().splitlines()]
         self.assertTrue(any(m.get("type") == "transport_error" for m in messages))
+
+
+    def test_tokens_stream_through_as_they_are_produced(self):
+        # Regression: the daemon used BufferedReader.read(65536), which
+        # blocks until 64KB or EOF, so the panel received every streamed
+        # token at once when the worker exited.
+        import socket as _socket
+        conn = _socket.socket(_socket.AF_UNIX)
+        conn.connect(str(self.path))
+        conn.sendall(json.dumps({"op": "run", "id": "st", "task": "stream",
+                                 "workspace": str(self.root)}).encode() + b"\n")
+        buf, arrivals = b"", []
+        while True:
+            chunk = conn.recv(65536)
+            if not chunk:
+                break
+            buf += chunk
+            while b"\n" in buf:
+                line, buf = buf.split(b"\n", 1)
+                msg = json.loads(line)
+                if msg.get("type") == "delta":
+                    arrivals.append(time.time() - msg["t"])
+        conn.close()
+        self.assertEqual(3, len(arrivals))
+        # each token reaches the client right after it was printed, not ~0.6s
+        # later when the worker finishes
+        self.assertLess(max(arrivals), 0.2, arrivals)
+
+    def test_a_prestarted_spare_worker_serves_requests(self):
+        deadline = time.time() + 5
+        while time.time() < deadline:
+            with self.server._spare_lock:
+                spare = self.server._spare
+            if spare is not None and spare.poll() is None:
+                break
+            time.sleep(0.02)
+        else:
+            self.fail("no spare worker was started")
+        reply = self.call({"op": "run", "id": "sp", "task": "via-spare",
+                           "workspace": str(self.root), "grants": {"input": True}})
+        self.assertEqual("via-spare", reply[0]["text"])
+        self.assertEqual("1", reply[0]["grant"])
+        # it was consumed, and a replacement is started for the next request
+        deadline = time.time() + 5
+        while time.time() < deadline:
+            with self.server._spare_lock:
+                nxt = self.server._spare
+            if nxt is not None and nxt is not spare and nxt.poll() is None:
+                break
+            time.sleep(0.02)
+        else:
+            self.fail("spare worker was not replaced")
+
+    def test_prewarm_is_a_noop_answer_without_probing_in_tests(self):
+        reply = self.call({"op": "prewarm"})
+        self.assertTrue(reply[0]["ok"])
+        self.assertFalse(self.server.warm_caps)
 
 
 if __name__ == "__main__":

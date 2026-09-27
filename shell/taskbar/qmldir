@@ -1,0 +1,4 @@
+singleton TaskStore 1.0 TaskStore.qml
+Taskbar 1.0 Taskbar.qml
+TaskButton 1.0 TaskButton.qml
+TaskPreview 1.0 TaskPreview.qml

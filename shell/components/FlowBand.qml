@@ -1,10 +1,12 @@
 import QtQuick
 import "../common"
 
-// High-fidelity perimeter outline for the main floating bar: multi-tier flowing
-// chromatic light-pipe (Azure → Crimson → Solar Gold → Emerald Aurora) traveling
-// clockwise around the full pill perimeter with dual orbiting specular photon glints,
-// multi-tier atmospheric bloom, and status-adaptive harmonics.
+// Ambient gradient shimmer for the main bar's bottom edge, in the vein of
+// Gemini/NotebookLM's "AI is working" glow: a soft, Gaussian-blurred band
+// whose hue drifts continuously along the bar's own crimson family. There is
+// no traveling point highlight — the only motion is the slow, steady color
+// drift itself, so it reads as ambient rather than busy. Colors come
+// straight from Theme so the rail always matches the bar's actual palette.
 Item {
     id: root
 
@@ -12,7 +14,7 @@ Item {
     property string mode: "bottomEdge"
 
     // 0 = invisible … 1 = full brightness
-    property real amplitude: 0.96
+    property real amplitude: 1.0
     property int periodMs: 10000
     property bool boosted: false
     property string status: "idle"
@@ -23,34 +25,36 @@ Item {
     readonly property bool isBlocked: status === "blocked"
 
     // Responsive boost scaling
-    property real boost: isWorking ? 1.45
-                       : isWatching ? 1.22
-                       : isBlocked ? 1.30
-                       : hovered ? 1.25 : 1.0
+    property real boost: isWorking ? 1.55
+                       : isWatching ? 1.28
+                       : isBlocked ? 1.38
+                       : hovered ? 1.30 : 1.0
     Behavior on boost { NumberAnimation { duration: Theme.durMed; easing.type: Easing.OutCubic } }
 
     readonly property real effectiveAmplitude: Math.min(1.0, amplitude * boost)
 
+    // Keep the idle rail as a fine ambient seam; reserve the brighter bloom
+    // for actual agent activity or deliberate pointer attention.
     property real glowLevel: isWorking ? 1.0
-                           : isWatching ? 0.94
-                           : isBlocked ? 0.96
-                           : hovered ? 0.95 : 0.88
+                           : isWatching ? 0.88
+                           : isBlocked ? 0.92
+                           : hovered ? 0.72 : 0.50
     Behavior on glowLevel { NumberAnimation { duration: Theme.durSlow; easing.type: Easing.InOutSine } }
 
-    // Dynamic animation speed multiplier
-    property real speedMult: isWorking ? 2.2
-                           : isWatching ? 1.25
-                           : isBlocked ? 0.75
-                           : hovered ? 1.25 : 1.0
+    // Dynamic drift speed multiplier
+    property real speedMult: isWorking ? 1.8
+                           : isWatching ? 1.2
+                           : isBlocked ? 0.8
+                           : hovered ? 1.15 : 1.0
     Behavior on speedMult { NumberAnimation { duration: Theme.durMed } }
 
     // ── Continuous motion drivers ─────────────────────────────────────────
-    readonly property real sweepMs: Math.max(3200, Math.round(periodMs / Math.max(0.5, speedMult)))
-    readonly property real glintMs: Math.round(sweepMs * 0.72)
-    readonly property real breathMs: isWorking ? Theme.durAmbient * 1.5 : Theme.durAmbient * 3
+    // sweepMs is deliberately long — this is a slow ambient hue drift, not a
+    // sweeping beam, so it should never feel like it's "racing" the bar.
+    readonly property real sweepMs: Math.max(5200, Math.round(periodMs / Math.max(0.5, speedMult)))
+    readonly property real breathMs: isWorking ? Theme.durAmbient * 2 : Theme.durAmbient * 3.5
 
     property real phase: 0
-    property real glintPhase: 0
     property real breath: 0
 
     FrameAnimation {
@@ -59,11 +63,12 @@ Item {
         onTriggered: {
             var dt = Math.min(frameTime, 0.1);
             root.phase = (root.phase + dt * 1000 / root.sweepMs) % 1;
-            root.glintPhase = (root.glintPhase + dt * 1000 / root.glintMs) % 1;
             root.breath = (root.breath + dt * 1000 / root.breathMs) % 1;
             sinceRepaint += dt;
-            // 25 FPS at idle (cinema-smooth, ultra-efficient ~5% CPU), 60 FPS when active or hovered
-            var targetInterval = (root.isWorking || root.hovered) ? 0.016 : 0.040;
+            // 15 FPS at idle (the drift is slow enough that this is
+            // indistinguishable from 60 FPS but costs ~1/4 the paint time),
+            // 60 FPS when active or hovered
+            var targetInterval = (root.isWorking || root.hovered) ? 0.016 : 0.066;
             if (sinceRepaint >= targetInterval) {
                 sinceRepaint = 0;
                 canvas.requestPaint();
@@ -95,22 +100,36 @@ Item {
 
             var r = h / 2; // Exact pill cap radius (e.g. 26px for h=52)
             var breathSin = 0.5 + 0.5 * Math.sin(root.breath * Math.PI * 2);
-            var amp = root.effectiveAmplitude * (0.88 + 0.12 * breathSin);
+            var amp = root.effectiveAmplitude * (0.92 + 0.08 * breathSin);
             if (amp <= 0.01) return;
 
-            // ── Palette: Google's iconic four brand hues, HDR emissive calibrated ─
-            // Tuned for dark-mode OLED/LCD displays with lifted chroma and luminous flux
-            // so transitions remain rich, pure, and vibrant without muddy midpoint dropoff.
-            var palette = [
-                [0.22, 0.54, 1.00], // Electric Azure   (#388AFF)
-                [0.96, 0.24, 0.24], // Neon Crimson     (#F53D3D)
-                [1.00, 0.76, 0.03], // Solar Gold       (#FFC208)
-                [0.15, 0.78, 0.40], // Emerald Aurora   (#26C766)
-                [0.22, 0.54, 1.00]  // Seamless loop closure
+            function triple(c) { return [c.r, c.g, c.b]; }
+
+            // Status-adaptive palette, always drawn from the bar's own crimson
+            // family in Theme — never colors invented outside it. Every stop
+            // stays lit; nothing dips to near-black, so the shimmer never shows
+            // a dead patch as it drifts.
+            var palette = root.isBlocked ? [
+                triple(Theme.alarm),
+                triple(Theme.warn),
+                triple(Theme.alarm)
+            ] : root.isWatching ? [
+                triple(Theme.gilded),
+                triple(Theme.ember),
+                triple(Theme.alarm),
+                triple(Theme.gilded)
+            ] : [
+                triple(Theme.crimson),
+                triple(Theme.crimsonText),
+                triple(Theme.ember),
+                triple(Theme.gilded),
+                triple(Theme.alarm),
+                triple(Theme.crimson)
             ];
 
-            // Hermite color interpolation with mid-blend saturation lift & specular highlight
-            function colorAt(progress, alpha, glintIntensity) {
+            // Hermite color interpolation with a small mid-blend saturation
+            // lift so the interpolated midpoint doesn't read as washed out.
+            function colorAt(progress, alpha) {
                 var p = (((progress % 1) + 1) % 1) * (palette.length - 1);
                 var index = Math.min(palette.length - 2, Math.floor(p));
                 var mix = p - index;
@@ -119,30 +138,14 @@ Item {
                 var a = palette[index];
                 var b = palette[index + 1];
 
-                // Interpolated color channels
                 var rCol = a[0] + (b[0] - a[0]) * s;
                 var gCol = a[1] + (b[1] - a[1]) * s;
                 var bCol = a[2] + (b[2] - a[2]) * s;
 
-                // Saturation preservation: lift midpoint luminance to prevent desaturation dip
                 var midBump = 1.0 + 0.12 * Math.sin(mix * Math.PI);
                 rCol *= midBump;
                 gCol *= midBump;
                 bCol *= midBump;
-
-                // Traveling specular photon glint modulation
-                if (glintIntensity > 0.005) {
-                    var g = Math.min(1.0, glintIntensity);
-                    // Luminous color vibrancy surge
-                    var vBoost = 1.0 + g * 0.35;
-                    // Diamond-bright specular highlight at the center of the photon crest
-                    var spec = Math.pow(g, 2.2) * 0.50;
-                    rCol = Math.min(1.0, rCol * vBoost + spec);
-                    gCol = Math.min(1.0, gCol * vBoost + spec);
-                    bCol = Math.min(1.0, bCol * vBoost + spec);
-                    // Slight alpha expansion for atmospheric flare
-                    alpha = Math.min(1.0, alpha * (1.0 + g * 0.35));
-                }
 
                 return Qt.rgba(
                     Math.max(0, Math.min(1, rCol)),
@@ -152,21 +155,14 @@ Item {
                 );
             }
 
-            // Shortest cyclic distance Gaussian glint profile for dual orbiting photons
-            function glintAt(s) {
-                var d1 = Math.abs(s - root.glintPhase);
-                if (d1 > 0.5) d1 = 1.0 - d1;
-                var d2 = Math.abs(s - ((root.glintPhase + 0.5) % 1));
-                if (d2 > 0.5) d2 = 1.0 - d2;
-                var dMin = Math.min(d1, d2);
-                var sigma = 0.042; // ~320px smooth Gaussian crest
-                return Math.exp(- (dMin * dMin) / (2 * sigma * sigma));
-            }
+            // How many times the palette repeats across the shape: a single
+            // pass of 6 similar warm hues over a wide bar barely changes
+            // per-pixel, so the drift reads as static. Repeating the palette
+            // and letting phase slide it gives a clearly visible flowing
+            // band — still smooth and ambient, just actually perceptible.
+            var repeats = Math.max(2, Math.min(6, Math.round(w / 220)));
 
             // ── Seamless Closed-Loop Pill Stroke ────────────────────
-            // Top/bottom straight edges use GPU-rasterized linear gradients
-            // (zero banding, zero segment gaps). Semicircular caps use continuous
-            // butt-cap tangent arcs that meet flush without beads.
             function drawPillLoop(inset, lineWidth, baseAlpha) {
                 var R = Math.max(0.5, r - inset);
                 var cxLeft = r;
@@ -176,9 +172,9 @@ Item {
                 var arc = Math.PI * R;
                 var perimeter = 2 * straight + 2 * arc;
 
-                var sTop = straight / perimeter;
                 var sRight = (straight + arc) / perimeter;
                 var sBot = (2 * straight + arc) / perimeter;
+                var alpha = amp * root.glowLevel * baseAlpha;
 
                 ctx.lineWidth = lineWidth;
                 ctx.lineCap = "butt";
@@ -189,12 +185,9 @@ Item {
                 var nStops = Math.max(16, Math.min(32, Math.round(straight / 65)));
                 for (var k = 0; k <= nStops; k++) {
                     var u = k / nStops;
-                    var s = u * sTop;
-                    var wavePhase = (((s - root.phase) % 1) + 1) % 1;
-                    var glint = glintAt(s);
-                    var alpha = amp * root.glowLevel * baseAlpha;
-                    var col = colorAt(wavePhase, alpha, glint);
-                    gradTop.addColorStop(u, col);
+                    var s = u * (straight / perimeter);
+                    var wavePhase = (((s * repeats - root.phase) % 1) + 1) % 1;
+                    gradTop.addColorStop(u, colorAt(wavePhase, alpha));
                 }
                 ctx.strokeStyle = gradTop;
                 ctx.beginPath();
@@ -210,11 +203,8 @@ Item {
                     var aMid = (a0 + a1) / 2;
                     var dist = straight + R * (aMid + Math.PI / 2);
                     var sArc = dist / perimeter;
-                    var wavePhaseArc = (((sArc - root.phase) % 1) + 1) % 1;
-                    var glintArc = glintAt(sArc);
-                    var alphaArc = amp * root.glowLevel * baseAlpha;
-                    var colArc = colorAt(wavePhaseArc, alphaArc, glintArc);
-                    ctx.strokeStyle = colArc;
+                    var wavePhaseArc = (((sArc * repeats - root.phase) % 1) + 1) % 1;
+                    ctx.strokeStyle = colorAt(wavePhaseArc, alpha);
                     ctx.beginPath();
                     ctx.arc(cxRight, cy, R, a0, a1);
                     ctx.stroke();
@@ -225,11 +215,8 @@ Item {
                 for (var m = 0; m <= nStops; m++) {
                     var ub = m / nStops;
                     var sb = sRight + ub * (sBot - sRight);
-                    var wavePhaseB = (((sb - root.phase) % 1) + 1) % 1;
-                    var glintB = glintAt(sb);
-                    var alphaB = amp * root.glowLevel * baseAlpha;
-                    var colB = colorAt(wavePhaseB, alphaB, glintB);
-                    gradBot.addColorStop(ub, colB);
+                    var wavePhaseB = (((sb * repeats - root.phase) % 1) + 1) % 1;
+                    gradBot.addColorStop(ub, colorAt(wavePhaseB, alpha));
                 }
                 ctx.strokeStyle = gradBot;
                 ctx.beginPath();
@@ -244,11 +231,8 @@ Item {
                     var laMid = (la0 + la1) / 2;
                     var distL = 2 * straight + arc + R * (laMid - Math.PI / 2);
                     var sLeft = distL / perimeter;
-                    var wavePhaseL = (((sLeft - root.phase) % 1) + 1) % 1;
-                    var glintL = glintAt(sLeft);
-                    var alphaL = amp * root.glowLevel * baseAlpha;
-                    var colL = colorAt(wavePhaseL, alphaL, glintL);
-                    ctx.strokeStyle = colL;
+                    var wavePhaseL = (((sLeft * repeats - root.phase) % 1) + 1) % 1;
+                    ctx.strokeStyle = colorAt(wavePhaseL, alpha);
                     ctx.beginPath();
                     ctx.arc(cxLeft, cy, R, la0, la1);
                     ctx.stroke();
@@ -256,9 +240,6 @@ Item {
             }
 
             // ── Edge-to-Edge Linear Rail Mode ──────────────────────────────────
-            // Continuous horizontal chromatic laser rail along the bottom edge
-            // (y = h - inset) with dual orbiting specular photon crests, multi-tier
-            // atmospheric diffusion, and status-adaptive harmonics.
             function drawBottomRail(inset, lineWidth, baseAlpha) {
                 var y = h - inset;
                 ctx.lineWidth = lineWidth;
@@ -266,15 +247,12 @@ Item {
                 ctx.lineJoin = "miter";
 
                 var grad = ctx.createLinearGradient(0, y, w, y);
-                var nStops = Math.max(32, Math.min(96, Math.round(w / 40)));
+                var nStops = Math.max(36, Math.min(108, Math.round(w / 35)));
+                var alpha = amp * root.glowLevel * baseAlpha;
                 for (var k = 0; k <= nStops; k++) {
                     var u = k / nStops;
-                    var s = u; // spatial progress [0, 1] along bottom boundary
-                    var wavePhase = (((s - root.phase) % 1) + 1) % 1;
-                    var glint = glintAt(s);
-                    var alpha = amp * root.glowLevel * baseAlpha;
-                    var col = colorAt(wavePhase, alpha, glint);
-                    grad.addColorStop(u, col);
+                    var wavePhase = (((u * repeats - root.phase) % 1) + 1) % 1;
+                    grad.addColorStop(u, colorAt(wavePhase, alpha));
                 }
                 ctx.strokeStyle = grad;
                 ctx.beginPath();
@@ -283,42 +261,27 @@ Item {
                 ctx.stroke();
             }
 
+            // A single flat-color halo (the shape's alpha channel, Gaussian-blurred
+            // and tinted by shadowColor) is the whole visual: a soft ambient band,
+            // no distinct traveling highlight riding on top of it.
+            var haloColor = root.isBlocked ? Theme.alarm : root.isWatching ? Theme.gilded : Theme.crimson;
+            var haloAlpha = amp * root.glowLevel * (root.isWorking ? 0.52 : (root.hovered ? 0.34 : 0.20));
+            var haloBlur = root.isWorking ? 12 : (root.hovered ? 9 : 6);
+
+            ctx.shadowColor = Qt.rgba(haloColor.r, haloColor.g, haloColor.b, haloAlpha);
+            ctx.shadowBlur = haloBlur;
+
+            var lwCore = root.isWorking ? 1.6 : (root.hovered ? 1.15 : 1.0);
+            var coreAlpha = root.isWorking ? 1.0 : (root.hovered ? 0.82 : 0.62);
+
             if (root.mode === "bottomEdge") {
-                // Pass 1: Diffuse Atmospheric Haze (ethereal upward dispersion into obsidian glass)
-                var lwHaze = root.isWorking ? 10.0 : 8.0;
-                var hazeAlpha = root.isWorking ? 0.35 : (root.hovered ? 0.28 : 0.20);
-                drawBottomRail(lwHaze * 0.4, lwHaze, hazeAlpha);
-
-                // Pass 2: Volumetric Bloom Core
-                var lwBloomB = root.isWorking ? 6.0 : 4.5;
-                var bloomAlphaB = root.isWorking ? 0.60 : (root.hovered ? 0.50 : 0.40);
-                drawBottomRail(lwBloomB * 0.45, lwBloomB, bloomAlphaB);
-
-                // Pass 3: Saturated Chromatic Light-Pipe Ribbon
-                var lwCoreB = root.isWorking ? 2.8 : 2.2;
-                var coreAlphaB = root.isWorking ? 1.0 : (root.hovered ? 0.96 : 0.90);
-                drawBottomRail(lwCoreB * 0.5, lwCoreB, coreAlphaB);
-
-                // Pass 4: Precision Crystalline Laser Hairline (razor specular boundary)
-                var lwLaserB = 1.15;
-                var laserAlphaB = root.isWorking ? 1.0 : (root.hovered ? 0.98 : 0.95);
-                drawBottomRail(0.6, lwLaserB, laserAlphaB);
+                drawBottomRail(0.9, lwCore, coreAlpha);
             } else {
-                // Pass 1: Volumetric Atmospheric Bloom
-                var lwBloom = root.isWorking ? 7.5 : 6.0;
-                var bloomAlpha = root.isWorking ? 0.55 : (root.hovered ? 0.45 : 0.35);
-                drawPillLoop(lwBloom * 0.5, lwBloom, bloomAlpha);
-
-                // Pass 2: Chromatic Core Light-Pipe Ribbon
-                var lwCore = root.isWorking ? 3.0 : 2.5;
-                var coreAlpha = root.isWorking ? 1.0 : (root.hovered ? 0.96 : 0.88);
-                drawPillLoop(lwCore * 0.5, lwCore, coreAlpha);
-
-                // Pass 3: Precision Crystalline Laser Hairline
-                var lwLaser = 1.15;
-                var laserAlpha = root.isWorking ? 1.0 : (root.hovered ? 0.98 : 0.94);
-                drawPillLoop(0.65, lwLaser, laserAlpha);
+                drawPillLoop(0.9, lwCore, coreAlpha);
             }
+
+            ctx.shadowBlur = 0;
+            ctx.shadowColor = "transparent";
         }
     }
 }

@@ -1,0 +1,91 @@
+#!/usr/bin/env bash
+# kinetix-check — report whether updates are available, without root.
+#
+# Used two ways: by a human (`kinetix check`) and by the shell's update
+# capsule (`kinetix check --json`), which runs it on a timer and turns the
+# count into a bar badge. Both must work as an ordinary user, so this never
+# touches the system package database directly — it delegates to
+# `checkupdates` (pacman-contrib), which syncs into a throwaway database in a
+# temp dir exactly so an unprivileged user can ask this question.
+#
+# Exit status is the contract the shell keys off, matching checkupdates' own
+# convention: 10 when updates are available, 0 when there are none. Both are
+# success; a missing pacman-contrib or a network failure is exit 1.
+set -Eeuo pipefail
+
+JSON=0
+WRITE_CACHE=""
+while (( $# )); do
+    case "$1" in
+        --json) JSON=1 ;;
+        --write-cache) WRITE_CACHE="${2:?--write-cache needs a path}"; shift ;;
+        -h|--help)
+            printf 'usage: kinetix check [--json] [--write-cache PATH]\n'
+            exit 0 ;;
+        *) printf 'kinetix check: unknown option %q\n' "$1" >&2; exit 2 ;;
+    esac
+    shift
+done
+
+updates=""
+if command -v checkupdates >/dev/null 2>&1; then
+    # checkupdates prints one "name old -> new" line per package and exits 0
+    # whether or not it found any, so the lines are the signal, not the code.
+    updates="$(checkupdates 2>/dev/null || true)"
+elif command -v pacman >/dev/null 2>&1; then
+    updates="$(pacman -Qu 2>/dev/null || true)"
+else
+    printf 'kinetix check: neither checkupdates nor pacman is available\n' >&2
+    exit 1
+fi
+
+# A stray blank line would otherwise count as a package.
+updates="$(printf '%s\n' "$updates" | sed '/^[[:space:]]*$/d')"
+count=0
+[[ -n "$updates" ]] && count="$(printf '%s\n' "$updates" | wc -l)"
+
+# Whether Kinetix's own package is among them — the shell shows a different
+# hint for "your desktop has an update" than for "Arch has 40 updates".
+kinetix_update=false
+if printf '%s\n' "$updates" | grep -qE '^kinetix(-keyring)?[[:space:]]'; then
+    kinetix_update=true
+fi
+
+if (( JSON )); then
+    # Packages are listed so the shell can show what is waiting. Escaping is
+    # deliberately minimal: package names are [a-z0-9@._+-], never quotes.
+    printf '{"count":%d,"kinetix":%s,"packages":[' "$count" "$kinetix_update"
+    first=1
+    while IFS= read -r line; do
+        [[ -z "$line" ]] && continue
+        (( first )) || printf ','
+        first=0
+        printf '"%s"' "${line//\"/}"
+    done <<< "$updates"
+    printf ']}\n'
+else
+    if (( count == 0 )); then
+        printf 'KinetixOS is up to date.\n'
+    else
+        if $kinetix_update; then
+            printf '%d update(s) available (including KinetixOS):\n' "$count"
+        else
+            printf '%d update(s) available:\n' "$count"
+        fi
+        printf '%s\n' "$updates"
+    fi
+fi
+
+if [[ -n "$WRITE_CACHE" ]]; then
+    # Always JSON, whatever --json said: the shell is the only consumer of the
+    # cache, and it wants the count without re-parsing prose. Written via a
+    # temp file + rename so the shell never reads a half-written cache.
+    cache_dir="$(dirname -- "$WRITE_CACHE")"
+    mkdir -p -- "$cache_dir"
+    tmp="$(mktemp "$cache_dir/.updates.XXXXXX")"
+    printf '{"count":%d,"kinetix":%s}\n' "$count" "$kinetix_update" > "$tmp"
+    mv -- "$tmp" "$WRITE_CACHE"
+fi
+
+(( count > 0 )) && exit 10
+exit 0

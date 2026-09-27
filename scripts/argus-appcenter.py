@@ -9,6 +9,8 @@ and system-wide update checking.
 import sys
 import os
 import json
+import re
+import shlex
 import shutil
 import subprocess
 import urllib.request
@@ -19,27 +21,113 @@ import time
 CACHE_DIR = os.path.expanduser("~/.cache/argus")
 os.makedirs(CACHE_DIR, exist_ok=True)
 STATUS_CACHE_FILE = os.path.join(CACHE_DIR, "appcenter_status.json")
+INSTALLED_CACHE_FILE = os.path.join(CACHE_DIR, "appcenter_installed.json")
+SEARCH_CACHE_FILE = os.path.join(CACHE_DIR, "appcenter_search_cache.json")
 
-def get_installed_pacman_packages():
-    """Return set of all packages installed via pacman/paru."""
+def _read_installed_cache():
+    if os.path.exists(INSTALLED_CACHE_FILE):
+        try:
+            with open(INSTALLED_CACHE_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                if time.time() - data.get("timestamp", 0) < 45:
+                    return data
+        except Exception:
+            pass
+    return None
+
+def _write_installed_cache(pacman=None, flatpak=None):
+    current = {}
+    if os.path.exists(INSTALLED_CACHE_FILE):
+        try:
+            with open(INSTALLED_CACHE_FILE, "r", encoding="utf-8") as f:
+                current = json.load(f)
+        except Exception:
+            current = {}
+    if pacman is not None:
+        current["pacman"] = list(pacman)
+    if flatpak is not None:
+        current["flatpak"] = list(flatpak)
+    current["timestamp"] = time.time()
+    try:
+        with open(INSTALLED_CACHE_FILE, "w", encoding="utf-8") as f:
+            json.dump(current, f)
+    except Exception:
+        pass
+
+def get_installed_pacman_packages(force=False):
+    """Return set of all packages installed via pacman/paru with 45s TTL caching."""
+    if not force:
+        cached = _read_installed_cache()
+        if cached and "pacman" in cached:
+            return set(cached["pacman"])
     try:
         out = subprocess.check_output(["pacman", "-Qq"], text=True, stderr=subprocess.DEVNULL)
-        return set(line.strip() for line in out.splitlines() if line.strip())
+        pkgs = set(line.strip() for line in out.splitlines() if line.strip())
+        _write_installed_cache(pacman=pkgs)
+        return pkgs
     except Exception:
         return set()
 
-def get_installed_flatpaks():
-    """Return set of all app IDs installed via flatpak."""
+def get_installed_flatpaks(force=False):
+    """Return set of all app IDs installed via flatpak with 45s TTL caching."""
     if not shutil.which("flatpak"):
         return set()
+    if not force:
+        cached = _read_installed_cache()
+        if cached and "flatpak" in cached:
+            return set(cached["flatpak"])
     try:
         out = subprocess.check_output(
             ["flatpak", "list", "--app", "--columns=application"],
             text=True, stderr=subprocess.DEVNULL
         )
-        return set(line.strip() for line in out.splitlines() if line.strip())
+        fps = set(line.strip() for line in out.splitlines() if line.strip())
+        _write_installed_cache(flatpak=fps)
+        return fps
     except Exception:
         return set()
+
+def get_cached_search(query, source_filter):
+    key = f"{source_filter}:{query.lower().strip()}"
+    if os.path.exists(SEARCH_CACHE_FILE):
+        try:
+            with open(SEARCH_CACHE_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                entry = data.get(key)
+                if entry and time.time() - entry.get("timestamp", 0) < 180:
+                    return entry.get("results")
+        except Exception:
+            pass
+    return None
+
+def save_cached_search(query, source_filter, results):
+    key = f"{source_filter}:{query.lower().strip()}"
+    data = {}
+    if os.path.exists(SEARCH_CACHE_FILE):
+        try:
+            with open(SEARCH_CACHE_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        except Exception:
+            data = {}
+    if len(data) > 60:
+        oldest = sorted(data.keys(), key=lambda k: data[k].get("timestamp", 0))[:25]
+        for k in oldest:
+            data.pop(k, None)
+    data[key] = {"results": results, "timestamp": time.time()}
+    try:
+        with open(SEARCH_CACHE_FILE, "w", encoding="utf-8") as f:
+            json.dump(data, f)
+    except Exception:
+        pass
+
+def invalidate_caches():
+    """Clear transient caches on install/uninstall actions."""
+    for path in [STATUS_CACHE_FILE, INSTALLED_CACHE_FILE, SEARCH_CACHE_FILE]:
+        try:
+            if os.path.exists(path):
+                os.remove(path)
+        except Exception:
+            pass
 
 def get_package_managers():
     """Detect available package managers and their statuses."""
@@ -101,76 +189,115 @@ def get_package_managers():
 
     return managers
 
-def check_updates():
-    """Fetch pending updates from checkupdates and paru -Qua."""
-    updates = []
-    
-    # 1. Official Arch updates
-    if shutil.which("checkupdates"):
+def check_updates(force=False):
+    """Fetch pending updates concurrently from checkupdates, paru/yay, and flatpak with 90s caching."""
+    if not force and os.path.exists(STATUS_CACHE_FILE):
         try:
-            res = subprocess.run(
-                ["checkupdates"], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
-                text=True, timeout=8
-            )
-            for line in res.stdout.splitlines():
-                parts = line.strip().split()
-                if len(parts) >= 4 and parts[2] == "->":
-                    updates.append({
-                        "name": parts[0],
-                        "current": parts[1],
-                        "new": parts[3],
-                        "source": "arch"
-                    })
+            with open(STATUS_CACHE_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                if time.time() - data.get("timestamp", 0) < 90:
+                    return data
         except Exception:
             pass
 
-    # 2. AUR updates via paru or yay
-    aur_helper = "paru" if shutil.which("paru") else ("yay" if shutil.which("yay") else None)
-    if aur_helper:
-        try:
-            res = subprocess.run(
-                [aur_helper, "-Qua"], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
-                text=True, timeout=8
-            )
-            for line in res.stdout.splitlines():
-                parts = line.strip().split()
-                if len(parts) >= 4 and parts[2] == "->":
-                    # Avoid duplicates if already listed in arch
-                    if not any(u["name"] == parts[0] for u in updates):
-                        updates.append({
+    updates = []
+    seen = set()
+
+    def _check_arch():
+        arch_upd = []
+        if shutil.which("checkupdates"):
+            try:
+                res = subprocess.run(
+                    ["checkupdates"], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                    text=True, timeout=8
+                )
+                for line in res.stdout.splitlines():
+                    parts = line.strip().split()
+                    if len(parts) >= 4 and parts[2] == "->":
+                        arch_upd.append({
+                            "name": parts[0],
+                            "current": parts[1],
+                            "new": parts[3],
+                            "source": "arch"
+                        })
+            except Exception:
+                pass
+        return arch_upd
+
+    def _check_aur():
+        aur_upd = []
+        aur_helper = "paru" if shutil.which("paru") else ("yay" if shutil.which("yay") else None)
+        if aur_helper:
+            try:
+                res = subprocess.run(
+                    [aur_helper, "-Qua"], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                    text=True, timeout=8
+                )
+                for line in res.stdout.splitlines():
+                    parts = line.strip().split()
+                    if len(parts) >= 4 and parts[2] == "->":
+                        aur_upd.append({
                             "name": parts[0],
                             "current": parts[1],
                             "new": parts[3],
                             "source": "aur"
                         })
-        except Exception:
-            pass
+            except Exception:
+                pass
+        return aur_upd
 
-    # 3. Flatpak updates
-    if shutil.which("flatpak"):
-        try:
-            res = subprocess.run(
-                ["flatpak", "remote-ls", "--updates", "--columns=name,application,version"],
-                stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, timeout=5
-            )
-            for line in res.stdout.splitlines():
-                parts = [p.strip() for p in line.split("\t") if p.strip()]
-                if len(parts) >= 2:
-                    updates.append({
-                        "name": parts[0],
-                        "app_id": parts[1],
-                        "current": "installed",
-                        "new": parts[2] if len(parts) > 2 else "latest",
-                        "source": "flatpak"
-                    })
-        except Exception:
-            pass
+    def _check_flatpak():
+        flatpak_upd = []
+        if shutil.which("flatpak"):
+            try:
+                res = subprocess.run(
+                    ["flatpak", "remote-ls", "--updates", "--columns=name,application,version"],
+                    stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, timeout=5
+                )
+                for line in res.stdout.splitlines():
+                    parts = [p.strip() for p in line.split("\t") if p.strip()]
+                    if len(parts) >= 2:
+                        flatpak_upd.append({
+                            "name": parts[0],
+                            "app_id": parts[1],
+                            "current": "installed",
+                            "new": parts[2] if len(parts) > 2 else "latest",
+                            "source": "flatpak"
+                        })
+            except Exception:
+                pass
+        return flatpak_upd
 
-    return {
+    with concurrent.futures.ThreadPoolExecutor(max_workers=3) as pool:
+        f_arch = pool.submit(_check_arch)
+        f_aur = pool.submit(_check_aur)
+        f_flatpak = pool.submit(_check_flatpak)
+
+        for item in f_arch.result():
+            if item["name"] not in seen:
+                seen.add(item["name"])
+                updates.append(item)
+
+        for item in f_aur.result():
+            if item["name"] not in seen:
+                seen.add(item["name"])
+                updates.append(item)
+
+        for item in f_flatpak.result():
+            updates.append(item)
+
+    payload = {
         "updates": updates,
         "count": len(updates),
         "timestamp": time.time()
     }
+    try:
+        with open(STATUS_CACHE_FILE, "w", encoding="utf-8") as f:
+            json.dump(payload, f)
+    except Exception:
+        pass
+
+    return payload
 
 def search_aur(query, installed_set):
     """Query the official AUR RPC v5."""
@@ -401,92 +528,140 @@ def get_featured(installed_set, installed_flatpaks):
             a["installed"] = a["id"] in installed_set
     return apps
 
+PARU_BOOTSTRAP = (
+    "echo '1. Installing compilation dependencies...' && "
+    "sudo pacman -S --needed --noconfirm base-devel git && "
+    "echo '2. Cloning paru-bin repository from AUR...' && "
+    "rm -rf /tmp/paru-bin && "
+    "git clone https://aur.archlinux.org/paru-bin.git /tmp/paru-bin && "
+    "echo '3. Building and installing paru package...' && "
+    "(cd /tmp/paru-bin && makepkg -si --noconfirm)"
+)
+FLATHUB_URL = "https://dl.flathub.org/repo/flathub.flatpakrepo"
+# Per-user Flathub remote: installs need no root and no polkit agent.
+FLATHUB_SETUP = (
+    "{ which flatpak >/dev/null 2>&1 || sudo pacman -S --needed --noconfirm flatpak; } && "
+    f"flatpak remote-add --user --if-not-exists flathub {FLATHUB_URL}"
+)
+
+
+# Arch package names and Flatpak app IDs only ever use these characters;
+# anything else is refused before it can reach a shell command line.
+PKG_ID_RE = re.compile(r"^[A-Za-z0-9@._+-]{1,255}$")
+
+
+def repo_helper():
+    """Tool for official-repo packages: an AUR helper if present, else pacman."""
+    return "paru" if shutil.which("paru") else ("yay" if shutil.which("yay") else "sudo pacman")
+
+
+def aur_helper():
+    return "paru" if shutil.which("paru") else ("yay" if shutil.which("yay") else None)
+
+
+def _terminal_argv(title, script):
+    """argv for the first available terminal. Each one runs in the foreground
+    (no single-instance handoff) so the caller can wait for the job to end."""
+    candidates = []
+    env_term = os.environ.get("TERMINAL", "").strip()
+    if env_term:
+        candidates.append(os.path.basename(env_term.split()[0]))
+    candidates += ["ghostty", "konsole", "kitty", "alacritty", "foot", "wezterm", "xterm"]
+    for term in candidates:
+        path = shutil.which(term)
+        if not path:
+            continue
+        if term == "ghostty":
+            return [path, "--gtk-single-instance=false", f"--title={title}", "-e", "bash", "-c", script]
+        if term == "konsole":
+            return [path, "--separate", "--hide-menubar", "-p", f"tabtitle={title}", "-e", "bash", "-c", script]
+        if term == "kitty":
+            return [path, "--title", title, "bash", "-c", script]
+        if term == "alacritty":
+            return [path, "--title", title, "-e", "bash", "-c", script]
+        if term == "foot":
+            return [path, "--title", title, "bash", "-c", script]
+        if term == "wezterm":
+            return [path, "start", "--always-new-process", "--", "bash", "-c", script]
+        return [path, "-T", title, "-e", "bash", "-c", script]
+    return None
+
+
 def launch_in_terminal(title, cmd):
-    """Launch interactive bash command inside the desktop terminal emulator."""
-    for term in ["konsole", "alacritty", "kitty", "foot", "ghostty", "wezterm", "gnome-terminal", "xterm"]:
-        if shutil.which(term):
-            if term == "konsole":
-                subprocess.Popen(["konsole", "--title", title, "-e", "bash", "-c", cmd])
-                return
-            elif term == "alacritty":
-                subprocess.Popen(["alacritty", "-T", title, "-e", "bash", "-c", cmd])
-                return
-            elif term == "kitty":
-                subprocess.Popen(["kitty", "-T", title, "bash", "-c", cmd])
-                return
-            elif term == "foot":
-                subprocess.Popen(["foot", "-T", title, "bash", "-c", cmd])
-                return
-            elif term == "ghostty":
-                subprocess.Popen(["ghostty", "-e", "bash", "-c", cmd])
-                return
-            elif term == "wezterm":
-                subprocess.Popen(["wezterm", "start", "--", "bash", "-c", cmd])
-                return
-            elif term == "gnome-terminal":
-                subprocess.Popen(["gnome-terminal", "--title", title, "--", "bash", "-c", cmd])
-                return
-            elif term == "xterm":
-                subprocess.Popen(["xterm", "-title", title, "-e", "bash", "-c", cmd])
-                return
-    # Fallback if no graphical terminal found
-    subprocess.Popen(["sh", "-c", cmd])
+    """Run a package job in a terminal and wait for it to finish.
+
+    A failed step keeps the window open with the exit code instead of the
+    window vanishing mid-error. Returns the job's exit code (127 when no
+    terminal exists)."""
+    script = (
+        f"{cmd}\nrc=$?\n"
+        "if [ $rc -ne 0 ]; then echo; echo \"✗ Failed (exit $rc). Nothing else was changed.\"; "
+        "read -r -p 'Press Enter to close.' _; fi\nexit $rc"
+    )
+    argv = _terminal_argv(title, script)
+    if not argv:
+        subprocess.Popen([
+            "notify-send", "-a", "Kinetix App Center", "No terminal found",
+            "Install ghostty, konsole, kitty, alacritty or foot to run package jobs.",
+        ])
+        return 127
+    # Own session: a shell reload that kills this process must never take a
+    # running pacman transaction down with it.
+    proc = subprocess.Popen(argv, start_new_session=True,
+                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    return proc.wait()
 
 def execute_install(source, pkg_id):
-    """Launch terminal runner to install package."""
+    """Run the install in a terminal; returns its exit code."""
+    q = shlex.quote(pkg_id)
+    done = f"echo '' && echo 'Successfully installed {pkg_id}! Press Enter to close.' && read -r _"
     if source == "flatpak":
-        if not shutil.which("flatpak"):
-            # Enable flatpak first, then install app
-            cmd = (
-                f"echo '=== Enabling Flatpak & Flathub ===' && "
-                f"paru -S --noconfirm flatpak && "
-                f"flatpak remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo && "
-                f"echo '=== Installing {pkg_id} ===' && "
-                f"flatpak install -y flathub {pkg_id} && "
-                f"echo 'Successfully installed {pkg_id}! Press Enter to close.' && read -r _"
-            )
+        cmd = (
+            f"echo '=== Installing {pkg_id} via Flathub ===' && {FLATHUB_SETUP} && "
+            f"flatpak install --user -y flathub {q} && {done}"
+        )
+    elif source == "aur":
+        helper = aur_helper()
+        if helper:
+            cmd = f"echo '=== Installing {pkg_id} from the AUR via {helper} ===' && {helper} -S --noconfirm {q} && {done}"
         else:
+            # pacman cannot build AUR packages; bootstrap paru first.
             cmd = (
-                f"echo '=== Installing {pkg_id} via Flatpak ===' && "
-                f"flatpak install -y flathub {pkg_id} && "
-                f"echo '' && echo 'Successfully installed {pkg_id}! Press Enter to close.' && read -r _"
+                "echo '=== No AUR helper yet: installing paru first ===' && "
+                f"{PARU_BOOTSTRAP} && echo '=== Installing {pkg_id} ===' && "
+                f"paru -S --noconfirm {q} && {done}"
             )
     else:
-        helper = "paru" if shutil.which("paru") else ("yay" if shutil.which("yay") else "sudo pacman")
-        cmd = (
-            f"echo '=== Installing {pkg_id} via {helper} ===' && "
-            f"{helper} -S --noconfirm {pkg_id} && "
-            f"echo '' && echo 'Successfully installed {pkg_id}! Press Enter to close.' && read -r _"
-        )
+        helper = repo_helper()
+        cmd = f"echo '=== Installing {pkg_id} via {helper} ===' && {helper} -S --noconfirm {q} && {done}"
 
-    launch_in_terminal(f"Kinetix App Center — Installing {pkg_id}", cmd)
+    return launch_in_terminal(f"Kinetix App Center — Installing {pkg_id}", cmd)
 
 def execute_uninstall(source, pkg_id):
     """Launch terminal runner to uninstall package."""
     if source == "flatpak":
-        cmd = f"flatpak uninstall -y {pkg_id} && echo 'Uninstalled {pkg_id}. Press Enter to close.' && read -r _"
+        cmd = f"flatpak uninstall -y {shlex.quote(pkg_id)} && echo 'Uninstalled {pkg_id}. Press Enter to close.' && read -r _"
     else:
-        cmd = f"sudo pacman -R --noconfirm {pkg_id} && echo 'Uninstalled {pkg_id}. Press Enter to close.' && read -r _"
+        cmd = f"sudo pacman -R --noconfirm {shlex.quote(pkg_id)} && echo 'Uninstalled {pkg_id}. Press Enter to close.' && read -r _"
 
-    launch_in_terminal(f"Kinetix App Center — Removing {pkg_id}", cmd)
+    return launch_in_terminal(f"Kinetix App Center — Removing {pkg_id}", cmd)
 
 def execute_enable_manager(manager):
     """Enable / install package manager with 1-click terminal orchestration."""
-    helper = "paru" if shutil.which("paru") else ("yay" if shutil.which("yay") else "sudo pacman")
+    helper = repo_helper()
+    rc = 0
 
     if manager == "flatpak":
         cmd = (
             "echo '===================================================' && "
             "echo '   Kinetix OS — Installing Flatpak & Flathub       ' && "
             "echo '===================================================' && "
-            "echo '1. Installing flatpak package...' && "
-            f"{helper} -S --noconfirm flatpak && "
-            "echo '2. Adding Flathub universal remote repository...' && "
-            "flatpak remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo && "
+            "echo 'Installing flatpak and adding the Flathub remote...' && "
+            f"{FLATHUB_SETUP} && "
             "echo '' && echo '✓ Flatpak & Flathub successfully enabled!' && "
             "echo 'Press Enter to return to Kinetix OS.' && read -r _"
         )
-        launch_in_terminal("Kinetix App Center — Enabling Flatpak & Flathub", cmd)
+        rc = launch_in_terminal("Kinetix App Center — Enabling Flatpak & Flathub", cmd)
 
     elif manager in ["snap", "snapd"]:
         cmd = (
@@ -501,25 +676,18 @@ def execute_enable_manager(manager):
             "echo '' && echo '✓ Snapd successfully installed and activated!' && "
             "echo 'Press Enter to return to Kinetix OS.' && read -r _"
         )
-        launch_in_terminal("Kinetix App Center — Installing Snapd", cmd)
+        rc = launch_in_terminal("Kinetix App Center — Installing Snapd", cmd)
 
     elif manager in ["paru", "aur"]:
         cmd = (
             "echo '===================================================' && "
             "echo '   Kinetix OS — Installing Paru (Rust AUR Helper)  ' && "
             "echo '===================================================' && "
-            "echo '1. Installing compilation dependencies...' && "
-            "sudo pacman -S --needed --noconfirm base-devel git rust && "
-            "echo '2. Cloning paru-bin repository from AUR...' && "
-            "rm -rf /tmp/paru-bin && "
-            "git clone https://aur.archlinux.org/paru-bin.git /tmp/paru-bin && "
-            "cd /tmp/paru-bin && "
-            "echo '3. Building and installing paru package...' && "
-            "makepkg -si --noconfirm && "
+            f"{PARU_BOOTSTRAP} && "
             "echo '' && echo '✓ Paru AUR helper successfully installed!' && "
             "echo 'Press Enter to return to Kinetix OS.' && read -r _"
         )
-        launch_in_terminal("Kinetix App Center — Installing Paru AUR Helper", cmd)
+        rc = launch_in_terminal("Kinetix App Center — Installing Paru AUR Helper", cmd)
 
     elif manager == "yay":
         cmd = (
@@ -540,7 +708,7 @@ def execute_enable_manager(manager):
             "echo '' && echo '✓ Yay AUR helper successfully installed!' && "
             "echo 'Press Enter to return to Kinetix OS.' && read -r _"
         )
-        launch_in_terminal("Kinetix App Center — Installing Yay AUR Helper", cmd)
+        rc = launch_in_terminal("Kinetix App Center — Installing Yay AUR Helper", cmd)
 
     elif manager == "appimage":
         cmd = (
@@ -554,15 +722,17 @@ def execute_enable_manager(manager):
             "echo '' && echo '✓ AppImage support ready!' && "
             "echo 'Press Enter to return to Kinetix OS.' && read -r _"
         )
-        launch_in_terminal("Kinetix App Center — Installing AppImage Support", cmd)
+        rc = launch_in_terminal("Kinetix App Center — Installing AppImage Support", cmd)
 
     else:
         cmd = f"echo 'Unsupported package manager: {manager}' && read -r _"
-        launch_in_terminal(f"Kinetix App Center — {manager.title()}", cmd)
+        rc = launch_in_terminal(f"Kinetix App Center — {manager.title()}", cmd)
+
+    return rc
 
 def execute_update_all():
-    """Launch full system update."""
-    helper = "paru" if shutil.which("paru") else ("yay" if shutil.which("yay") else "sudo pacman")
+    """Run a full system update; returns its exit code."""
+    helper = repo_helper()
     cmd = (
         "echo '=========================================' && "
         "echo '   KINETIX OS SYSTEM & APP UPDATE        ' && "
@@ -580,7 +750,7 @@ def execute_update_all():
         "echo '=========================================' && "
         "echo 'Press Enter to return to Kinetix OS.' && read -r _"
     )
-    launch_in_terminal("Kinetix App Center — Updating All Packages", cmd)
+    return launch_in_terminal("Kinetix App Center — Updating All Packages", cmd)
 
 def main():
     if len(sys.argv) < 2:
@@ -592,16 +762,16 @@ def main():
     if action == "status":
         managers = get_package_managers()
         # Fast update count check from cache or quick check
-        upd = check_updates()
+        upd = check_updates(force=False)
         print(json.dumps({
             "managers": managers,
             "updates_count": upd["count"],
-            "updates": upd["updates"][:15],
+            "updates": upd["updates"][:20],
             "timestamp": time.time()
         }))
 
     elif action == "check-updates":
-        res = check_updates()
+        res = check_updates(force=True)
         print(json.dumps(res))
 
     elif action == "featured":
@@ -621,6 +791,17 @@ def main():
         source_filter = "all"
         if len(sys.argv) >= 4:
             source_filter = sys.argv[3].lower()
+
+        # Check search cache first
+        cached_results = get_cached_search(query, source_filter)
+        if cached_results is not None:
+            print(json.dumps({
+                "query": query,
+                "results": cached_results,
+                "total": len(cached_results),
+                "cached": True
+            }))
+            return
 
         p_set = get_installed_pacman_packages()
         f_set = get_installed_flatpaks()
@@ -662,9 +843,12 @@ def main():
             reverse=True
         )
 
+        top_results = deduped[:40]
+        save_cached_search(query, source_filter, top_results)
+
         print(json.dumps({
             "query": query,
-            "results": deduped[:40],
+            "results": top_results,
             "total": len(deduped)
         }))
 
@@ -674,8 +858,12 @@ def main():
             sys.exit(1)
         source = sys.argv[2]
         pkg_id = sys.argv[3]
-        execute_install(source, pkg_id)
-        print(json.dumps({"status": "launched", "source": source, "id": pkg_id}))
+        if not PKG_ID_RE.match(pkg_id) or source not in ("arch", "aur", "flatpak"):
+            print(json.dumps({"error": "Invalid source or package ID"}))
+            sys.exit(2)
+        rc = execute_install(source, pkg_id)
+        invalidate_caches()
+        print(json.dumps({"status": "done" if rc == 0 else "failed", "rc": rc, "source": source, "id": pkg_id}))
 
     elif action == "uninstall":
         if len(sys.argv) < 4:
@@ -683,20 +871,26 @@ def main():
             sys.exit(1)
         source = sys.argv[2]
         pkg_id = sys.argv[3]
-        execute_uninstall(source, pkg_id)
-        print(json.dumps({"status": "launched", "source": source, "id": pkg_id}))
+        if not PKG_ID_RE.match(pkg_id) or source not in ("arch", "aur", "flatpak"):
+            print(json.dumps({"error": "Invalid source or package ID"}))
+            sys.exit(2)
+        rc = execute_uninstall(source, pkg_id)
+        invalidate_caches()
+        print(json.dumps({"status": "done" if rc == 0 else "failed", "rc": rc, "source": source, "id": pkg_id}))
 
     elif action == "update-all":
-        execute_update_all()
-        print(json.dumps({"status": "launched"}))
+        rc = execute_update_all()
+        invalidate_caches()
+        print(json.dumps({"status": "done" if rc == 0 else "failed", "rc": rc}))
 
     elif action == "enable-manager":
         if len(sys.argv) < 3:
             print(json.dumps({"error": "Missing manager name"}))
             sys.exit(1)
         manager = sys.argv[2]
-        execute_enable_manager(manager)
-        print(json.dumps({"status": "launched", "manager": manager}))
+        rc = execute_enable_manager(manager)
+        invalidate_caches()
+        print(json.dumps({"status": "done" if rc == 0 else "failed", "rc": rc, "manager": manager}))
 
     else:
         print(json.dumps({"error": f"Unknown action: {action}"}))

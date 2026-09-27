@@ -1,0 +1,62 @@
+# Maintainer: KinetixOS
+#
+# Packages the KinetixOS payload — shell, agent runtime, helper scripts,
+# desktop config and the kinetix command — as one pacman-owned unit.
+#
+# pkgver is kept in lockstep with distro/version by publish.sh, and a test
+# asserts they match. The package owns files that archinstall used to copy
+# loose; that ownership is what lets a later `pacman -Syu` replace them
+# cleanly, which loose copies of the same files cannot do.
+pkgname=kinetix
+pkgver=0.1.0
+pkgrel=1
+pkgdesc="KinetixOS desktop shell, agent runtime and system integration"
+arch=('x86_64')
+url="https://github.com/AstraeusAI/KinetixOS"
+# The repository does not carry a LICENSE file yet; `custom` is the honest
+# label until it does.
+license=('custom')
+# The desktop and runtime the payload needs. Declared so that `pacman -Syu`
+# keeps them with the desktop rather than letting them drift or go missing.
+depends=(
+    kwin quickshell qt6-wayland qt6-tools
+    python ghostty swaybg sddm
+    pipewire pipewire-pulse wireplumber
+    xdg-desktop-portal xdg-desktop-portal-gtk
+    networkmanager
+    spectacle ydotool wtype wl-clipboard at-spi2-core
+    tesseract tesseract-data-eng imagemagick
+    inter-font ttf-jetbrains-mono
+    pacman-contrib ufw
+)
+optdepends=(
+    'snapper: bootable rollback snapshots for `kinetix update`'
+    'flatpak: sandboxed applications'
+    'ananicy-cpp: auto-nice background processes'
+    'irqbalance: spread interrupts across cores'
+    'power-profiles-daemon: performance/balanced/power-saver toggle'
+    'zram-generator: compressed swap in RAM'
+    'gamemode: gaming performance mode'
+    'mangohud: in-game performance overlay'
+    'gamescope: gaming compositor'
+)
+# The payload tree is staged here by publish.sh before makepkg runs; makepkg
+# has no clean way to pull files from a parent directory, so the build reads
+# from $startdir. A missing tree is a publish.sh bug, not a user error.
+install=kinetix.install
+backup=(
+    'etc/sysctl.d/99-kinetix-performance.conf'
+    'etc/udev/rules.d/60-kinetix-ioscheduler.rules'
+    'etc/systemd/zram-generator.conf'
+)
+source=()
+sha256sums=()
+
+package() {
+    if [[ ! -d "$startdir/tree" ]]; then
+        printf 'kinetix: payload tree missing at %s/tree — run distro/publish.sh\n' "$startdir" >&2
+        return 1
+    fi
+    # cp -a the whole staged rootfs tree into the package root.
+    cp -a "$startdir/tree/." "$pkgdir/"
+}

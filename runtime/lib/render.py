@@ -283,4 +283,13 @@ def _failure_detail(result):
         text = (result.get(key) or "").strip()
         if text:
             return text[:500]
+    # Gate-style tools report structured findings rather than a shell error.
+    # Preserve the first one in the incident log so repeated failures are
+    # diagnosable without reopening a compacted task journal.
+    findings = result.get("findings") or []
+    if findings:
+        return str(findings[0])[:500]
+    guidance = result.get("guidance")
+    if guidance:
+        return str(guidance)[:500]
     return "unknown"

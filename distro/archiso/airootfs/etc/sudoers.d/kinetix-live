@@ -1,0 +1,6 @@
+# The live account sets its password on tty1 before SDDM starts. Keep
+# graphical autologin, but require that credential for every admin action.
+# No password or password hash is embedded in the ISO.
+# LIVE SESSION ONLY: never copy this policy onto the installed system.
+Defaults:kinetix timestamp_timeout=0
+kinetix ALL=(ALL:ALL) PASSWD: ALL

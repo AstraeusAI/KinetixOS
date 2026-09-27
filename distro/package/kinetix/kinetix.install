@@ -1,0 +1,35 @@
+post_install() {
+    systemctl daemon-reload 2>/dev/null || true
+    systemctl enable kinetix-sudo-passwordless-cleanup.service 2>/dev/null || true
+    cat <<'EOF'
+KinetixOS desktop installed.
+
+  kinetix update      keep the system current (snapshot, packages, migrations)
+  kinetix check       see whether updates are waiting
+  kinetix --help      everything else
+
+This package owns the desktop files that were previously copied in by the
+installer, so `kinetix update` can now replace them cleanly.
+EOF
+}
+
+post_upgrade() {
+    systemctl daemon-reload 2>/dev/null || true
+    systemctl enable kinetix-sudo-passwordless-cleanup.service 2>/dev/null || true
+    printf '\nKinetixOS updated to %s.\n' "$1"
+    # The running Quickshell process keeps serving the QML it loaded at login;
+    # a fresh login (or `qs -p /usr/share/kinetix/shell ipc call argus ...`)
+    # picks up shell changes. Deliberately not restarting the session here —
+    # a package upgrade must not log the user out.
+}
+
+post_remove() {
+    systemctl disable kinetix-sudo-passwordless-cleanup.service 2>/dev/null || true
+    systemctl daemon-reload 2>/dev/null || true
+}
+
+pre_upgrade() {
+    # Nothing to do yet; present so a future migration that must run before
+    # files are replaced has a place to live.
+    :
+}

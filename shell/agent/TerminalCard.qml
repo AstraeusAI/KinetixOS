@@ -130,7 +130,7 @@ Rectangle {
             y: (termFlick.contentY / Math.max(body.implicitHeight - termFlick.height, 1)) * (termFlick.height - height)
             // crimson-family thumb, matching the agent panel's palette — this
             // card lives inside the panel and should not carry the OS violet
-            color: Theme.alpha("#B3283A", 0.55)
+            color: Theme.alpha(Theme.crimson, 0.55)
             opacity: (termFlick.moving || termFlick.flicking) ? 1.0 : 0.4
             Behavior on opacity { NumberAnimation { duration: Theme.durFast } }
         }

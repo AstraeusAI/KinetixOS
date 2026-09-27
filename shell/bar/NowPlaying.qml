@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Controls
 import Quickshell.Services.Mpris
 import "../common"
 import "../components"
@@ -7,6 +8,8 @@ import "../components"
 // Built on the unified BarBox obsidian glass system.
 BarBox {
     id: root
+
+    property bool compact: false
 
     property var player: {
         var ps = Mpris.players;
@@ -19,13 +22,14 @@ BarBox {
     implicitWidth: Math.min(row.implicitWidth + Theme.s3 * 2, 280)
     interactive: false
     Behavior on implicitWidth { NumberAnimation { duration: Theme.durMed; easing.type: Easing.OutQuint } }
+    HoverTip { target: root; hovered: root.compact && hov.hovered; text: trackText.text }
 
     HoverHandler { id: hov }
 
     Row {
         id: row
         anchors.centerIn: parent
-        spacing: Theme.s2
+        spacing: root.compact ? Theme.s1 : Theme.s2
 
         // Animated micro-equalizer when playing, music glyph when paused
         Item {
@@ -45,7 +49,11 @@ BarBox {
                         required property int index
                         width: 2
                         radius: 1
-                        color: Theme.accent2
+                        gradient: Gradient {
+                            orientation: Gradient.Vertical
+                            GradientStop { position: 0.0; color: Theme.crimsonText }
+                            GradientStop { position: 1.0; color: Theme.alpha(Theme.crimsonText, 0.45) }
+                        }
                         height: {
                             if (!root.player || root.player.playbackState !== MprisPlaybackState.Playing) return 3;
                             var phase = (Theme.heartbeatPhase + index * 0.33) % 1.0;
@@ -59,7 +67,7 @@ BarBox {
             Text {
                 visible: !root.player || root.player.playbackState !== MprisPlaybackState.Playing
                 text: "♫"
-                color: Theme.accent2
+                color: Theme.crimsonText
                 font.pixelSize: 11
                 anchors.centerIn: parent
             }
@@ -87,7 +95,7 @@ BarBox {
         // Play/Pause
         Text {
             text: root.player && root.player.playbackState === MprisPlaybackState.Playing ? "⏸" : "▶"
-            color: maPlay.containsMouse ? Theme.text : Theme.accent2
+            color: maPlay.containsMouse ? Theme.text : Theme.crimsonText
             font.pixelSize: 13
             scale: maPlay.pressed ? 0.88 : (maPlay.containsMouse ? 1.15 : 1.0)
             Behavior on scale { NumberAnimation { duration: Theme.durFast; easing.type: Easing.OutCubic } }
@@ -103,15 +111,34 @@ BarBox {
             }
         }
 
-        // Title · artist
-        Text {
-            text: (root.player ? root.player.trackTitle : "") +
-                  (root.player && root.player.trackArtist ? " — " + root.player.trackArtist : "")
-            color: Theme.textDim
-            font { family: Theme.fontUi; pixelSize: Theme.tCaption }
-            elide: Text.ElideRight
-            width: Math.min(implicitWidth, 140)
+        // Title · artist; compact mode keeps transport controls and exposes metadata by tooltip.
+        Item {
+            visible: !root.compact
+            implicitWidth: Math.min(trackText.implicitWidth, 140)
+            implicitHeight: trackText.implicitHeight
             anchors.verticalCenter: parent.verticalCenter
+
+            Text {
+                text: trackText.text
+                color: Qt.rgba(0, 0, 0, 0.65)
+                font: trackText.font
+                elide: Text.ElideRight
+                width: parent.implicitWidth
+                anchors.centerIn: parent
+                anchors.verticalCenterOffset: 1
+            }
+
+            Text {
+                id: trackText
+                text: (root.player ? root.player.trackTitle : "") +
+                      (root.player && root.player.trackArtist ? " — " + root.player.trackArtist : "")
+                color: hov.hovered ? Theme.text : Theme.textDim
+                font { family: Theme.fontUi; pixelSize: Theme.tCaption }
+                elide: Text.ElideRight
+                width: parent.implicitWidth
+                anchors.centerIn: parent
+                Behavior on color { ColorAnimation { duration: Theme.durFast } }
+            }
         }
 
         // Next

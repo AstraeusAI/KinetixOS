@@ -1,0 +1,7 @@
+# KinetixOS package repository.
+#
+# $arch is substituted by pacman (x86_64). Packages and the repo database are
+# signed with the key shipped by kinetix-keyring; SigLevel is set in the
+# [kinetix] stanza of /etc/pacman.conf. If this URL ever changes, update
+# distro/repo.conf and regenerate this file so the two stay consistent.
+Server = https://astraeusai.github.io/kinetix-pkgs/$arch

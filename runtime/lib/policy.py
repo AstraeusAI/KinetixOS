@@ -24,6 +24,9 @@ POLICY_FILE = CONF / "policy.json"
 
 # Commands that are never offered for approval — the agent must not be able to
 # talk a user into these, and they are not needed for software work.
+# Absolute: evaluated ahead of saved allow/deny memory in classify(), so no
+# saved rule (including a wildcard, including one written by hand into
+# policy.json) can authorize one of these strings. See classify()'s comment.
 HARD_DENY = [
     r"\bsudo\b",
     r"\bsu\b",
@@ -57,6 +60,25 @@ HARD_DENY = [
     r"\bkill\s+-9\s+-1\b",
 ]
 
+# Paths that are execution surfaces rather than data. Writing a file into one
+# of these does not store something — it schedules something to run, in this
+# session or the next, with no further policy decision and no user present.
+# Matched against the resolved subject, so the leading `(?:^|/)` anchors to a
+# path component and `…/src/autostart/foo.py` inside a project is not caught
+# while `~/.config/autostart/foo.desktop` is.
+PERSISTENCE = [
+    r"(?:^|/)\.config/autostart/",
+    r"(?:^|/)\.config/systemd/user/",
+    r"(?:^|/)\.local/share/applications/",
+    r"(?:^|/)\.local/share/systemd/",
+    r"(?:^|/)bin/(?:.*\.(?:desktop|service|socket|timer))",
+    r"(?:^|/)\.(?:bashrc|bash_profile|profile|zshrc|zprofile|zshenv)$",
+    r"(?:^|/)\.config/gtk-3\.0/settings\.ini$",
+    r"(?:^|/)\.config/plasma-org\.kde\.plasma\.desktop/applets/",
+    r"(?:^|/)\.Xauthority$",
+    r"(?:^|/)\.local/bin/",
+]
+
 # Read-only commands that may run unattended inside the workspace.
 # Redirection is permitted because the sandbox confines writes to the
 # workspace; command substitution and backticks are not, because they are the
@@ -85,8 +107,24 @@ SAFE_SHELL = re.compile(
 # only creates a local virtualenv directory. Without these, starting a new
 # project from scratch meant a prompt for every single bootstrap step before
 # any real work could begin.
+#
+# mypy/radon/bandit/vulture/interrogate/coverage are verify_deliverable's own
+# internal subprocess calls (tools.py) — read-only static analysis confined to
+# the workspace, same safety rationale as ruff/pytest above. Missing from
+# here, EVERY one of them prompted individually, and a headless/scripted
+# approve-loop (compare_runner.py's drive_argus, quality_loop.py) that only
+# tracks one pending approval id at a time can lose track when several land
+# inside a single tool call — confirmed live: a verify_deliverable call sat
+# at status=blocked for the rest of its trial, so the model never saw the
+# interrogate/vulture findings it was explicitly instructed to act on
+# (quality_loop.py round 1: 0% docstring coverage in every trial despite the
+# prompt saying twice to add them). The `-B` allowance on the python3 prefix
+# is for `python3 -B -m coverage run ...` (verify_deliverable's own coverage
+# invocation) — a single-letter interpreter flag, not a chaining risk.
 SAFE_BUILD = re.compile(
-    r"^\s*(pytest|python3?\s+-m\s+(pytest|unittest|py_compile|ruff|black|venv)|"
+    r"^\s*(pytest|python3?(?:\s+-[A-Za-z])*\s+-m\s+"
+    r"(pytest|unittest|py_compile|ruff|black|venv|"
+    r"mypy|radon|bandit|vulture|interrogate|coverage)|"
     r"ruff\s+(check|format)|black|prettier|eslint|tsc|"
     r"cargo\s+(test|build|check|clippy|fmt|init|new)|rustfmt|"
     r"npm\s+(test|run\s+\w+|ci|init\s+-y)|node\s+--check|"
@@ -146,7 +184,22 @@ DEFAULTS = {
     # start prompting instead of being refused outright — the opposite of
     # what was asked for.
     "fs.read": {"auto": ["$WORKSPACE/**", "$HOME/**"], "prompt": ["**"]},
-    "fs.write": {"auto": ["$WORKSPACE/**", "$HOME/**"], "prompt": ["**"]},
+    # $HOME/** covers the home directory broadly, and most of that is inert
+    # data. These directories are not: a file written here is something the
+    # session will execute later, without the user present and without another
+    # policy decision. They are held at prompt rather than deny so a user who
+    # genuinely means to install an autostart entry can still say so, but the
+    # default answer is no longer "fine, go ahead" — which is what it was, and
+    # which made the two-step `write_file ~/.local/share/applications/x.desktop`
+    # → `launch_app "x"` chain a complete persistence-and-execute primitive
+    # requiring no approval at any point.
+    "fs.write": {
+        # Writing outside the declared project is a meaningful context switch
+        # even when the path is under $HOME, so require an explicit approval.
+        "auto": ["$WORKSPACE/**"],
+        "prompt": ["**"],
+        "confirm": PERSISTENCE,
+    },
     "exec": {"auto": ["$SAFE"], "prompt": ["**"], "deny": HARD_DENY},
     "net": {"auto": [], "prompt": ["**"]},
     # Computer use follows the risk tiers in docs/03: the capability grant is
@@ -278,22 +331,68 @@ class Policy:
                 f"{grant} call supplied no path to check — "
                 "an unchecked subject is never auto-approved",
             )
-        # explicit memory wins
+        rules = DEFAULTS.get(grant, {})
+        # Hard-deny is absolute, and is evaluated before saved memory.
+        #
+        # The order used to be memory-first: a saved allow rule returned
+        # "auto" before HARD_DENY was ever consulted, so any allow rule
+        # matching a denied string overrode the list. Nothing in the normal
+        # flow can produce such a rule — hard-denied strings are never
+        # *offered* for approval, so there is no per-call path to "always
+        # allow" one — but the two ways that do exist (a hand-edited
+        # policy.json, or a broad pattern like `*`) turned a stated
+        # invariant into a silent one. HARD_DENY's own comment says the
+        # agent "must not be able to talk a user into these"; a config file
+        # is not a user talking to the agent, and "the user approved this
+        # once" cannot outrank a rule that exists precisely because the
+        # agent is not trusted to be talked into it.
+        #
+        # Saved memory still wins over everything *below* here — a saved
+        # deny beats a saved allow, and both still beat the default
+        # auto/prompt/deny ladder — which is what the existing tests for
+        # that precedence assert and what "saved memory wins" was always
+        # about.
+        deny_rules = list(rules.get("deny", []))
+        if command is not None:
+            # The hard-deny list is a statement about which strings may be
+            # executed, not about which capability class asked to execute one.
+            # Looking it up per-grant meant only `exec` was covered, so a tool
+            # that spawns a process with model-supplied text under any other
+            # grant skipped the net entirely — focus_or_launch (grant="input",
+            # risk="soft", argument documented as "Optional custom command to
+            # launch if app is not running") was auto-approved for
+            # `sudo rm -rf /`, which run_command refuses. It is applied
+            # whenever there is an actual command to judge, under any grant.
+            for pat in HARD_DENY:
+                if pat not in deny_rules:
+                    deny_rules.append(pat)
+        for pat in deny_rules:
+            if re.search(pat, subject):
+                return ("deny", f"refused: matches hard-deny rule {pat}")
+        # explicit memory wins from here down
         for pat in self.memory["deny"]:
             if self._matches(pat, subject):
                 return ("deny", f"denied by saved rule: {pat}")
         for pat in self.memory["allow"]:
             if self._matches(pat, subject):
                 return ("auto", f"allowed by saved rule: {pat}")
-
-        rules = DEFAULTS.get(grant, {})
-        for pat in rules.get("deny", []):
-            if re.search(pat, subject):
-                return ("deny", f"refused: matches hard-deny rule {pat}")
         # commit-tier actions are irreversible or externally visible: they
         # always surface unless the user saved a rule for them above.
         if risk == "commit":
             return ("prompt", f"{grant} commit-tier action requires approval")
+        # Execution surfaces are checked before the auto patterns, because the
+        # whole point is that `$HOME/**` would otherwise wave them through: these
+        # paths are inside the home directory by definition, and they are the
+        # ones where a file is a program. Deliberately prompt rather than deny —
+        # installing an autostart entry is a legitimate thing to ask for, it
+        # just should never happen as a side effect of something else.
+        for pat in rules.get("confirm", []):
+            if re.search(pat, subject):
+                return (
+                    "prompt",
+                    f"{grant} to an execution surface ({subject}) — this file "
+                    f"will be run by the session, not just stored",
+                )
         for pat in rules.get("auto", []):
             if self._matches(pat, subject):
                 return ("auto", f"auto: {grant} within {pat}")

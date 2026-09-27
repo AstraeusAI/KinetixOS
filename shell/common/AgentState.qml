@@ -1,17 +1,50 @@
 pragma Singleton
 import QtQuick
+import Quickshell
+import Quickshell.Io
 
 // UI-facing agent state. The bridge (ArgusBridge) drives these properties.
 QtObject {
     property bool panelOpen: false
     property bool paletteOpen: false
     property bool launcherOpen: false
+    property string activeWindowTitle: ""
+    property string activeWindowApp: ""
+
+    // ── quick terminal ───────────────────────────────────────────────
+    // Preferred path: Ghostty's own native drop-down (shell/terminal/), a
+    // real wlr-layer-shell surface — see ghostty.conf's header comment for
+    // why we don't reimplement that in QML. KinetixOS requires Ghostty and
+    // does not substitute a second terminal emulator if it is missing.
+    property bool terminalOpen: false
+    property Process terminalToggleProc: Process {
+        stdout: StdioCollector {
+            onStreamFinished: AgentState.terminalOpen = (this.text.trim() === "open")
+        }
+    }
+    property Process terminalStatusProbe: Process {
+        command: [Quickshell.shellDir + "/terminal/toggle.sh", "--status"]
+        running: true
+        stdout: StdioCollector {
+            onStreamFinished: AgentState.terminalOpen = (this.text.trim() === "open")
+        }
+    }
+    function toggleTerminal() {
+        terminalToggleProc.command = [Quickshell.shellDir + "/terminal/toggle.sh"];
+        terminalToggleProc.running = true;
+    }
+
     property bool sysHovered: false
     property bool sysOpen: false
     property real sysRightMargin: 16
     function toggleSys() {
         if (!sysOpen) appCenterOpen = false;
         sysOpen = !sysOpen;
+    }
+    property bool notifOpen: false
+    function toggleNotifs() {
+        if (!notifOpen) { sysOpen = false; appCenterOpen = false; }
+        notifOpen = !notifOpen;
     }
     property bool appCenterOpen: false
     property real appCenterRightMargin: 16
@@ -356,4 +389,5 @@ QtObject {
             if (AgentState.compactionProgress >= 1) { stop(); AgentState.compacting = false; }
         }
     }
+
 }

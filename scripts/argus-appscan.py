@@ -59,6 +59,21 @@ def load_icon_cache():
                         return icon_map, cache_file
         except Exception:
             pass
+    # Fallback to system pre-seeded cache if user cache is absent
+    system_cache = "/usr/share/kinetix/icon-index.json"
+    if not icon_map and os.path.isfile(system_cache):
+        try:
+            with open(system_cache, "r", encoding="utf-8") as f:
+                icon_map = json.load(f)
+                if icon_map:
+                    try:
+                        with open(cache_file, "w", encoding="utf-8") as out_f:
+                            json.dump(icon_map, out_f)
+                    except Exception:
+                        pass
+                    return icon_map, cache_file
+        except Exception:
+            pass
 
     # Build fresh icon map
     for d in ICON_DIRS:

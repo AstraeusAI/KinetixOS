@@ -120,6 +120,10 @@ QtObject {
     }
     function saveNow() {
         savePending = false;
+        // Never re-command a Process mid-run (Quickshell behavior is
+        // undefined); re-arm the debounce instead — the queued state still
+        // serializes on the next tick.
+        if (writer.running) { save(); return; }
         var arr = [];
         for (var i = 0; i < order.length; i++) {
             var w = _data[order[i]];

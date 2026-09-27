@@ -27,7 +27,7 @@ PanelWindow {
     // from applications, but its header and resize grip must receive clicks.
     focusable: true
 
-    WlrLayershell.namespace: "argus:widget:" + win.widget.id
+    WlrLayershell.namespace: "argus:widget:" + (win.widget.id || "pending")
     // Overlay is consistently pointer-interactive on KWin; Top can be
     // rendered above clients while still losing pointer dispatch in a few
     // Plasma layer-shell configurations.

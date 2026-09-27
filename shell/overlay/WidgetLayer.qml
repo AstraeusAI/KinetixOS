@@ -3,9 +3,10 @@ import Quickshell
 import "../common"
 import "../widgets"
 
-// The desktop widget layer: one layer-shell window per widget instance,
-// floating over applications. Add/remove via the widget catalog.
+// Optional desktop widget layer. Keep it dormant unless the user opts in;
+// no widget windows are created by the default KinetixOS desktop.
 Variants {
-    model: WidgetStore.order
+    readonly property bool widgetSystemEnabled: Quickshell.env("KINETIX_ENABLE_WIDGETS") === "1"
+    model: widgetSystemEnabled ? WidgetStore.order : []
     WidgetWindow {}
 }

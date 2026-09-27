@@ -31,12 +31,21 @@ Row {
                     required property int index
                     width: 3
                     height: 5 + index * 3
-                    radius: 1
-                    color: parent.parent.muted ? Theme.danger : (maVol.containsMouse ? Theme.accent2 : Theme.text)
+                    radius: 1.5
+                    color: parent.parent.muted ? Theme.danger : (maVol.containsMouse ? Theme.crimsonText : Theme.text)
                     opacity: parent.parent.muted ? 0.45
                            : (parent.parent.vol * 3 > index ? 0.95 : 0.22)
                     Behavior on opacity { NumberAnimation { duration: Theme.durFast } }
                     Behavior on color { ColorAnimation { duration: Theme.durFast } }
+
+                    // Top micro-sheen on volume bar
+                    Rectangle {
+                        anchors { top: parent.top; left: parent.left; right: parent.right }
+                        height: 1
+                        radius: 1
+                        color: Qt.rgba(1, 1, 1, 0.45)
+                        visible: parent.opacity > 0.5
+                    }
                 }
             }
         }
@@ -83,10 +92,11 @@ Row {
             Rectangle {
                 anchors { left: parent.left; verticalCenter: parent.verticalCenter }
                 width: 16; height: 9; radius: 2
-                color: Qt.rgba(1, 1, 1, 0.04)
+                color: parent.parent.charging ? Theme.alpha(Theme.accent2, 0.12) : Qt.rgba(1, 1, 1, 0.04)
                 border.width: 1
-                border.color: parent.parent.charging ? Theme.alpha(Theme.accent2, 0.5) : Theme.strokeStrong
+                border.color: parent.parent.charging ? Theme.alpha(Theme.accent2, 0.6) : Theme.strokeStrong
                 Behavior on border.color { ColorAnimation { duration: Theme.durFast } }
+                Behavior on color { ColorAnimation { duration: Theme.durFast } }
             }
             Rectangle {
                 x: 2
@@ -98,17 +108,26 @@ Row {
                      : parent.parent.pct < 0.2 ? Theme.danger : Theme.text
                 Behavior on width { NumberAnimation { duration: Theme.durMed } }
                 Behavior on color { ColorAnimation { duration: Theme.durFast } }
+
+                // Battery level inner specular highlight
+                Rectangle {
+                    anchors { top: parent.top; left: parent.left; right: parent.right }
+                    height: 1
+                    radius: 0.5
+                    color: Qt.rgba(1, 1, 1, 0.40)
+                }
             }
             Rectangle {
                 anchors { left: parent.left; leftMargin: 17; verticalCenter: parent.verticalCenter }
                 width: 2; height: 4; radius: 1
-                color: Theme.strokeStrong
+                color: parent.parent.charging ? Theme.accent2 : Theme.strokeStrong
+                Behavior on color { ColorAnimation { duration: Theme.durFast } }
             }
         }
         Text {
             text: Math.round(parent.pct * 100) + "%"
             color: parent.charging ? Theme.accent2 : (parent.pct < 0.2 ? Theme.danger : Theme.textDim)
-            font { family: Theme.fontMono; pixelSize: Theme.tCaption; weight: Font.Medium }
+            font { family: Theme.fontMono; pixelSize: Theme.tCaption; weight: Font.Medium; letterSpacing: 0.4 }
             anchors.verticalCenter: parent.verticalCenter
             Behavior on color { ColorAnimation { duration: Theme.durFast } }
         }

@@ -129,6 +129,8 @@ _stream_anthropic = _anthropic_stream._stream_anthropic
 _stream_codex = _codex_stream._stream_codex
 to_openai = _adapters.to_openai
 to_anthropic = _adapters.to_anthropic
+anthropic_system_blocks = _adapters.anthropic_system_blocks
+cached_tools = _adapters.cached_tools
 to_codex = _adapters.to_codex
 TOOLS = _adapters.TOOLS
 
@@ -146,4 +148,9 @@ doctor = _cli.doctor
 
 
 if __name__ == "__main__":
+    if sys.argv[1:2] == ["worker"]:
+        # pre-started daemon worker (see lib/daemon.py worker_main)
+        from lib import daemon as _daemon
+
+        sys.exit(_daemon.worker_main(main))
     main()

@@ -27,6 +27,12 @@ QtObject {
         }
     }
 
+    function reloadFavs() {
+        if (favReader.running) favReader.running = false;
+        favReader.command = ["sh", "-c", "cat " + AppIndex.favPath + " 2>/dev/null"];
+        favReader.running = true;
+    }
+
     function rescan() {
         if (scanner.running) {
             scanner.running = false;
@@ -34,11 +40,15 @@ QtObject {
         scanning = true;
         scanner.command = ["python3", scanScript];
         scanner.running = true;
+        reloadFavs();
     }
 
-    // Auto-rescan periodically to detect background pacman/flatpak/AUR installs
+    // Auto-rescan periodically to detect background pacman/flatpak/AUR installs.
+    // 120s: a full appscan costs ~44ms CPU + 20MB transient allocs, so 30s
+    // polling burned ~1s of CPU per 10min for an event that happens a few
+    // times a day; installs are still picked up on next open via refresh.
     property Timer autoRescanTimer: Timer {
-        interval: 30000
+        interval: 120000
         running: true
         repeat: true
         onTriggered: root.rescan()
@@ -72,6 +82,8 @@ QtObject {
     }
     function saveFavs() { favSaveTimer.restart(); }
     function saveFavsNow() {
+        // Same guard as WidgetStore: a running writer must not be re-commanded.
+        if (favWriter.running) { favSaveTimer.restart(); return; }
         var json = JSON.stringify({ "favorites": favorites });
         var esc = json.replace(/'/g, "'\\''");
         favWriter.command = ["sh", "-c",

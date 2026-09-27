@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# KWin is the compositor/window manager; Quickshell is the desktop shell.
+# Keep the public desktop identity Kinetix, independent of the compositor.
+export XDG_SESSION_TYPE=wayland
+export XDG_SESSION_DESKTOP=Kinetix
+export XDG_CURRENT_DESKTOP=Kinetix
+export TERMINAL=ghostty
+
+common_args=(
+    --xwayland
+    --no-lockscreen
+    --no-global-shortcuts
+    --locale1
+    --exit-with-session
+    /usr/bin/kinetix-shell
+)
+
+# VMs' emulated GPUs (including QEMU's default `-vga std` adapter) expose
+# real DRM/KMS but no 3D acceleration, so force software rendering there;
+# real hardware keeps using its actual GPU driver (mesa/vulkan-radeon/
+# vulkan-intel).
+#
+# Round 18: KWin's DRM backend used to be bypassed in VMs in favor of
+# nesting in an X11 server (first SDDM's own greeter Xorg, then a private
+# per-session Xorg), on the assumption emulated adapters lack DRM/KMS. That
+# assumption is stale for modern QEMU: its default `-vga std` adapter is
+# backed by the bochs-drm kernel driver, a real (if unaccelerated) KMS
+# device — confirmed live via /dev/dri/card0, DRIVER=bochs-drm, and a
+# rendered desktop over --drm in that exact VM. The nested-X11 path was
+# also where the actual black-screen bug lived: reusing the greeter's Xorg
+# left the rendered desktop on a VT that KWin's own VT-jump made inactive,
+# and a private Xorg needed seat/logind device grants it didn't reliably
+# get as a non-root user. Using --drm unconditionally removes that whole
+# failure class along with the indirection.
+if /usr/bin/systemd-detect-virt --quiet --vm; then
+    export LIBGL_ALWAYS_SOFTWARE=1
+fi
+
+exec /usr/bin/kwin_wayland --drm "${common_args[@]}"

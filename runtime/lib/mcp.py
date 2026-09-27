@@ -17,10 +17,13 @@ import json
 import os
 import queue
 import re
+import shlex
 import subprocess
 import threading
 import time
 from pathlib import Path
+
+from . import sandbox
 
 CONF = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "argus"
 CONFIG_FILE = CONF / "mcp.json"
@@ -99,6 +102,21 @@ class MCPClient:
         self._reader = None
         self.stderr_tail = []
 
+    def _argv(self):
+        """Start third-party MCP code without ambient home access or secrets."""
+        command = shlex.join([self.command, *self.args])
+        # A configured local server script may live under $HOME. Expose only
+        # that exact executable/script path, read-only; never the whole home.
+        paths = []
+        for value in self.args:
+            path = Path(str(value)).expanduser()
+            if path.is_absolute() and path.exists():
+                paths.append(str(path.resolve()))
+        return sandbox.build_argv(
+            command, None, sandbox=True, cwd="/tmp", home_access=False,
+            read_only=tuple(paths), systemd_scope=False,
+        )
+
     # ── framing: one JSON object per line, both directions ────────────
     def _read_loop(self):
         stream = self.proc.stdout
@@ -165,11 +183,12 @@ class MCPClient:
 
     # ── lifecycle ────────────────────────────────────────────────────
     def start(self, init_timeout=None):
-        env = dict(os.environ)
+        env = {"LANG": os.environ.get("LANG", "C.UTF-8"),
+               "PATH": "/usr/local/bin:/usr/bin:/bin"}
         env.update(self.extra_env)
         try:
             self.proc = subprocess.Popen(
-                [self.command, *self.args],
+                self._argv(),
                 stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,

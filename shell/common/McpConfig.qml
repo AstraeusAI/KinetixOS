@@ -4,8 +4,8 @@ import Quickshell
 import Quickshell.Io
 
 // MCP (Model Context Protocol) server registry for the Agent Panel's MCP
-// tab. Mirrors ProviderConfig.qml's established pattern exactly: a Process
-// reader (cat the JSON file) on a refresh Timer, a Process writer for plain
+// tab. Mirrors ProviderConfig.qml's established pattern exactly: an
+// in-process FileView reader (inotify + refresh Timer), a Process writer for plain
 // config edits (add/remove/enable), and — the one thing that genuinely
 // needs Python, since it has to spawn the server and speak MCP — a Process
 // that runs `argusd.py mcp-probe` for the "Test" action.
@@ -32,25 +32,36 @@ QtObject {
         return n;
     }
 
-    property Process reader: Process {
-        command: ["sh", "-c", "cat " + McpConfig.configPath + " 2>/dev/null"]
-        running: true
-        stdout: StdioCollector {
-            onStreamFinished: McpConfig.loadFromText(this.text)
-        }
+    // In-process read (was sh+cat every 4s): inotify catches writes at once;
+    // the timer keeps the old re-read cadence for files created or replaced
+    // from outside. Unchanged text is not re-parsed.
+    property string _lastText: "\u0000"
+    function _ingest(t) {
+        if (t === _lastText) return;
+        _lastText = t;
+        loadFromText(t);
+    }
+    property FileView reader: FileView {
+        path: Quickshell.env("HOME") + "/.config/argus/mcp.json"
+        watchChanges: true
+        printErrors: false
+        onFileChanged: reload()
+        onLoaded: McpConfig._ingest(text())
+        onLoadFailed: McpConfig._ingest("")
     }
 
     // The file can change from outside this shell instance (a probe writes
-    // it, a hot-reloaded panel writes it) — poll it like ProviderConfig
-    // polls keys.env, rather than trusting only this session's own writes.
+    // it, a hot-reloaded panel writes it) — re-read it like ProviderConfig
+    // re-reads keys.env, rather than trusting only this session's own writes.
     property Timer refreshTimer: Timer {
         interval: 4000
         repeat: true
         running: true
-        onTriggered: if (!McpConfig.reader.running) McpConfig.reader.running = true
+        onTriggered: McpConfig.reader.reload()
     }
 
     property Process writer: Process {}
+    property Timer persistRetry: Timer { interval: 120; onTriggered: McpConfig._persist() }
     property Process prober: Process {
         stdout: StdioCollector {
             onStreamFinished: McpConfig._onProbeFinished()
@@ -89,6 +100,8 @@ QtObject {
     }
 
     function _persist() {
+        // Never re-command a Process mid-run; retry shortly instead.
+        if (writer.running) { persistRetry.restart(); return; }
         var json = JSON.stringify(_docFromServers());
         var esc = json.replace(/'/g, "'\\''");
         writer.command = ["sh", "-c",
@@ -146,6 +159,6 @@ QtObject {
         // mcp-probe wrote tools/lastProbe straight to disk — reload from
         // there rather than trying to parse its stdout here, so this
         // singleton has exactly one source of truth for server state.
-        reader.running = true;
+        reader.reload();
     }
 }

@@ -330,10 +330,10 @@ class HomeDirectoryPolicyTests(unittest.TestCase):
         spec_doc = dict(argusd.toolreg.REGISTRY[tool])
         return argusd.policy_decision(self.policy, spec_doc, self.ctx, args)
 
-    def test_a_path_elsewhere_under_home_is_automatic_not_a_prompt(self):
+    def test_a_home_write_outside_the_workspace_prompts(self):
         elsewhere = str(self.fake_home / "projects" / "other-app" / "notes.md")
         self.assertEqual("auto", self.decision("read_file", {"path": elsewhere})[0])
-        self.assertEqual("auto", self.decision("write_file",
+        self.assertEqual("prompt", self.decision("write_file",
                          {"path": elsewhere, "content": "x"})[0])
 
     def test_a_path_outside_home_entirely_still_prompts(self):

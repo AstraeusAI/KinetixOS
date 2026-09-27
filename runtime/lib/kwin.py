@@ -45,6 +45,33 @@ SCRIPTING_PATH = "/Scripting"
 SCRIPTING_IFACE = "org.kde.kwin.Scripting"
 
 TMP = Path("/tmp")
+_BIN: dict[str, object] = {}
+
+
+def _have(name):
+    """Cached `shutil.which(name)`, or None.
+
+    Every capability in CAPABILITY_REQUIRES is expressed in terms of these
+    names, so a capability's availability is computed from the same list the
+    code path would actually shell out to. capabilities() used to answer by
+    calling `shutil.which` itself, inline, per key — which is how `zoom` came
+    to report yes whenever spectacle was installed even though zoom() needs
+    ImageMagick and returns "ImageMagick (magick/convert) required for zoom
+    crop" without it, and how `image_compare` came to report yes on `compare`
+    alone even though compare_regions() requires `compare` *and* magick/convert
+    together. Naming a capability after one of its two prerequisites is not a
+    probe. Caching also matters because this runs on every task start.
+    """
+    if name not in _BIN:
+        _BIN[name] = shutil.which(name)
+    return _BIN[name]
+
+
+def _imagemagick():
+    """Path to the ImageMagick CLI, or None. Both spellings are accepted by
+    the code below (`magick` on IM7, `convert` on IM6)."""
+    return _have("magick") or _have("convert")
+
 
 
 # ── D-Bus plumbing ───────────────────────────────────────────────────────
@@ -707,6 +734,10 @@ def screenshot(
     when the goal is "whatever the user is looking at"; `cursor` is exposed
     because it's a real spectacle mode, not because it's dependable here.
     """
+    # Element IDs belong to pixels from a particular annotated frame. Any
+    # fresh capture invalidates them before a later click can use stale UI
+    # coordinates after the desktop has changed.
+    _LAST_ANNOTATED_ELEMENTS.clear()
     if not shutil.which("spectacle"):
         return {"ok": False, "error": "spectacle not installed"}
     path = Path(path)
@@ -2403,16 +2434,76 @@ KEYSYMS = {
 for _n in range(1, 25):
     KEYSYMS[f"f{_n}"] = f"F{_n}"
 
-_WTYPE_SUPPORT: dict[str, bool] = {}
+_WTYPE_SUPPORT: dict[str, object] = {}
+
+# The Wayland global a virtual keyboard client binds to. Presence in the
+# registry is the compositor's own statement that it implements the protocol.
+_VK_GLOBAL = "zwp_virtual_keyboard_manager_v1"
 
 
-def wtype_supported():
-    """Probe once: does this compositor implement the virtual keyboard protocol?"""
-    if "ok" in _WTYPE_SUPPORT:
+def wayland_globals():
+    """Compositor-advertised Wayland globals, or None if they can't be read.
+
+    Read via `wayland-info`, which binds the registry and prints it. This is
+    the only side-effect-free way to ask the compositor what it supports:
+    unlike a trial keypress it changes nothing, and unlike a version check it
+    reports what this compositor actually implements on this session.
+    """
+    if _have("wayland-info") is None:
+        return None
+    try:
+        r = subprocess.run(
+            ["wayland-info"], capture_output=True, text=True, timeout=10
+        )
+    except Exception:
+        return None
+    if r.returncode != 0:
+        return None
+    return r.stdout or ""
+
+
+def wtype_supported(probe=False):
+    """Does the compositor implement zwp_virtual_keyboard_manager_v1?
+
+    Returns True / False / None (None = could not determine).
+
+    The obvious probe is to run `wtype -k F24` and see whether it complains,
+    and that is what this used to do. It injects a real F24 keystroke into
+    whatever window has focus, and this function is reached from
+    capabilities(), which loop.py calls at the start of every task and `argus
+    cli caps` calls on demand — so on any host where wtype *does* work, every
+    session start threw a stray F24 into the user's focused application. A
+    capability check must not change the desktop it is describing.
+
+    So the question is asked of the compositor instead: does it advertise the
+    global? That is a statement by KWin rather than an inference from a failed
+    command, and it needs no keypress. The injecting probe survives as
+    `probe=True` for a human who wants it confirmed by trial, which is the only
+    context where perturbing the desktop is the point.
+
+    On Plasma this answers False, and the earlier trial probe had already
+    established why: KWin does not implement zwp_virtual_keyboard_manager_v1
+    (wlroots-only), so `input_backend()` reduces to ydotool or nothing. The
+    old heuristic also returned True on unrelated failures — its test was
+    `"does not support" not in stderr`, so a missing WAYLAND_DISPLAY or a
+    permission error selected a wtype backend whose every keypress then failed
+    silently. Only "the compositor advertises the protocol" returns True now.
+    """
+    if "ok" in _WTYPE_SUPPORT and not probe:
         return _WTYPE_SUPPORT["ok"]
-    if not shutil.which("wtype"):
-        _WTYPE_SUPPORT["ok"] = False
+    if _have("wtype") is None:
+        _WTYPE_SUPPORT["ok"] = False  # no client, so nothing to bind
         return False
+    globals_ = wayland_globals()
+    if globals_ is not None:
+        _WTYPE_SUPPORT["ok"] = _VK_GLOBAL in globals_
+        return _WTYPE_SUPPORT["ok"]
+    if not probe:
+        # Undeterminable without perturbing the desktop. Say so rather than
+        # guessing: a wrong True here selects a backend that then fails on
+        # every key, which is harder to diagnose than an honest unknown.
+        _WTYPE_SUPPORT["ok"] = None
+        return None
     try:
         r = subprocess.run(
             ["wtype", "-k", "F24"], capture_output=True, text=True, timeout=10
@@ -2423,17 +2514,38 @@ def wtype_supported():
     return _WTYPE_SUPPORT["ok"]
 
 
+def _wtype_detail():
+    state = wtype_supported()
+    if state is True:
+        return f"compositor advertises {_VK_GLOBAL}"
+    if state is False:
+        return (
+            f"compositor does not advertise {_VK_GLOBAL} (wlroots-only "
+            f"protocol; KWin does not implement it)"
+        )
+    return (
+        "could not read the compositor's advertised globals, and confirming "
+        "by trial would inject a real keystroke into the focused window"
+    )
+
+
 def input_backend():
     """(backend, reason) — 'ydotool', 'wtype', or (None, why)."""
     ok, why = pointer_status()
     if ok:
         return "ydotool", "ok"
-    if wtype_supported():
+    if wtype_supported() is True:
         return "wtype", "ok"
+    undetermined = (
+        " (and the compositor's advertised globals could not be read to "
+        "confirm the virtual-keyboard protocol either way)"
+        if wtype_supported() is None
+        else ""
+    )
     return None, (
         "no keyboard backend: wtype needs the virtual-keyboard protocol "
         "(wlroots only — KWin does not implement it), and ydotool needs "
-        "uinput (" + why + ")"
+        "uinput (" + why + ")" + undetermined
     )
 
 
@@ -2638,9 +2750,144 @@ def clipboard_get():
     return {"ok": True, "text": text[:CLIPBOARD_MAX_CHARS], "truncated": truncated}
 
 
+CAPABILITY_REQUIRES = {
+    # Binary-gated capabilities, each naming *every* prerequisite its code
+    # path actually shells out to. Computed, not hand-maintained per key in
+    # capabilities(), so a capability can't claim to be available while the
+    # function behind it returns "ImageMagick required".
+    "screenshots": ("spectacle",),
+    # wait_for_screen_change is implemented by re-capturing and hashing, so it
+    # needs exactly what a capture needs.
+    "wait_for_screen_change": ("spectacle",),
+
+    "zoom": ("spectacle", "imagemagick"),
+    "coordinate_grid": ("spectacle", "imagemagick"),
+    "cursor_stamping": ("spectacle", "imagemagick"),
+    "ocr": ("tesseract",),
+    # annotate_screen() crops with ImageMagick and then reads the crop with
+    # tesseract; either one missing fails the whole thing.
+    "visual_annotations": ("spectacle", "tesseract", "imagemagick"),
+    # compare_regions() needs `compare` for the metric *and* magick/convert to
+    # produce the crops it compares.
+    "image_compare": ("compare", "imagemagick"),
+    "clipboard": ("wl-copy", "wl-paste"),
+    "multi_display": ("kscreen-doctor",),
+}
+
+# What still holds even when a capability reports available. These are the
+# hard-won host facts that used to exist only as prose in the comments of the
+# function that discovered them: a model reading a capability table with no
+# caveats will happily trust a capability right up to the moment it is wrong,
+# and each entry below is a case where "available" and "works" came apart.
+# Exposing them is the point of a specialist agent — this is the knowledge
+# that took a live debugging session to accumulate, and it is what a
+# third-party agent would otherwise have to rediscover one broken call at a
+# time. Keys are capability names; a missing key means "no known caveat".
+CAPABILITY_NOTES = {
+    "screenshots": (
+        "spectacle -b. mode=monitor means THE CURRENT monitor, not a named "
+        "one; no output can be selected by name. Regions are captured "
+        "fullscreen and cropped afterwards, because spectacle --region is "
+        "interactive only. mode=cursor is unreliable on this host (one hang, "
+        "four consecutive rc=2 with empty stderr) and falls back to mode=active. "
+        "Every coordinate you read is in this capture's pixel space; the "
+        "screenshot-to-logical ratio is a single scalar read from the first "
+        "enabled output and cached for the lifetime of the process, so a "
+        "scale or resolution change is never picked up."
+    ),
+    "zoom": "1:1 crop of an existing capture; a new fullscreen capture only if "
+    "no path was given.",
+    "cursor_stamping": (
+        "returns False if the cursor position cannot be read, independently "
+        "of ImageMagick being present."
+    ),
+    "visual_annotations": (
+        "Set-of-Marks over tesseract output. Element ids come from a "
+        "module-global cache that is NOT invalidated by a later screenshot, "
+        "so click_element can act on coordinates from an earlier frame."
+    ),
+    "image_compare": (
+        "whole-image pixel diff via `compare -metric AE`; a blinking cursor "
+        "is enough to register as changed."
+    ),
+    "wait_for_screen_change": (
+        "polls by re-capturing the full screen and hashing the PNG, once per "
+        "poll interval, with no change-detection events. timeout=30 at the "
+        "default 0.25s interval is 120 full-resolution captures and ~1GB of "
+        "hashing. Prefer a short timeout, or cursor_position, to confirm a move."
+    ),
+    "pointer": (
+        "uinput events are indistinguishable from a physical device to KWin. "
+        "There is no compositor-enforced scoping, no per-session consent, and "
+        "no way to tell an agent click from a user click. Placement is "
+        "verified by re-reading KWin cursorPos, not reported by the compositor."
+    ),
+    "keyboard": (
+        "wtype is dead on KWin (zwp_virtual_keyboard_manager_v1 is wlroots "
+        "only), so the keyboard path is uinput or nothing — including on hosts "
+        "where a virtual keyboard would otherwise be available."
+    ),
+    "multi_display": (
+        "screen scale is a SINGLE scalar read from the first enabled output, "
+        "cached for the process lifetime. Mixed-DPI multi-monitor is therefore "
+        "wrong on every output but the first, and a scale/resolution/hotplug "
+        "change is never picked up. Output rotation is not handled at all. "
+        "Prefer window-relative coordinates to absolute ones."
+    ),
+    "window_inventory": (
+        "via KWin scripting, whose results come back by scraping the user "
+        "journal for a per-call nonce. If scripting fails the fallback is the "
+        "KRunner windows runner plus org.kde.KWin.getWindowInfo, which is a "
+        "KWin 5 API and may not exist on KWin 6 — and the fallback cannot be "
+        "distinguished from 'no windows are open' by the caller."
+    ),
+    "window_control": (
+        "activate_window is verified against the compositor; close, move, "
+        "maximize and minimize report only that the call was issued, not that "
+        "it took effect."
+    ),
+    "window_relative_coords": (
+        "windows are resolved by exact internalId, or else by FIRST "
+        "caption/class substring match in stacking order. A window whose title "
+        "happens to contain the target string can be selected instead, and the "
+        "ambiguity is not reported."
+    ),
+    "app_orchestration": (
+        "focus_or_launch matches existing windows by substring, then falls "
+        "back to PATH lookup, then gtk-launch. launch_app additionally execs "
+        "a .desktop file's Exec= line through sh -c."
+    ),
+    "batch_actions": (
+        "desktop_actions has no cap on the number of actions, so one call can "
+        "inject unbounded input. There is no rate limit and no arbitration "
+        "with the user anywhere in the input path."
+    ),
+}
+
+
+def _missing_for(capability):
+    """(bool, [missing], [present]) for a binary-gated capability."""
+    missing, present = [], []
+    for token in CAPABILITY_REQUIRES.get(capability, ()):
+        found = _imagemagick() if token == "imagemagick" else _have(token)
+        (present if found else missing).append(token)
+    return not missing, missing, present
+
+
 def capabilities():
+    """Flat availability map, one key per capability.
+
+    Binary-gated keys are computed from CAPABILITY_REQUIRES, so a key is True
+    only when every prerequisite of the function behind it is present. The
+    input/perception keys that depend on a live probe rather than a file on
+    disk are still probed, because "is there a binary named ydotool" says
+    nothing about whether injection works — that is the whole reason
+    pointer_status() checks /proc/misc and the ydotoold socket and reports an
+    actionable reason. For the detail behind each key, including the caveats
+    that apply even when it is True, see capability_report().
+    """
     ptr_ok, ptr_why = pointer_status()
-    kb_backend, kb_detail = input_backend()  # was called 3x separately below
+    kb_backend, kb_detail = input_backend()
     scripting = (
         run_script(
             "(function(){ console.info('__MARKER__ok'); })();",
@@ -2649,39 +2896,173 @@ def capabilities():
         )
         is not None
     )
-    return {
-        "kwin_dbus": available(),
-        "window_inventory": scripting or available(),
+    kwin_up = available()
+    caps = {
+        # --- probed, not inferred from a binary name ---
+        "kwin_dbus": kwin_up,
+        # The KRunner/getWindowInfo fallback is KWin-5 era and unprobed, so
+        # this used to report yes on the strength of KWin merely being
+        # reachable. Scripting is the only path actually verified here.
+        "window_inventory": scripting,
         "window_control": scripting,
-        "screenshots": bool(shutil.which("spectacle")),
+        "window_relative_coords": scripting,
+        "window_inventory_detail": (
+            "ok (KWin scripting loaded, ran and returned a marked result)"
+            if scripting
+            else "KWin scripting did not return a result within 5s. The "
+            "KRunner/getWindowInfo fallback is KWin-5 era and is not "
+            "probed, so window inventory is reported unavailable rather "
+            "than guessed."
+        ),
         "keyboard": kb_backend is not None,
         "keyboard_backend": kb_backend,
         "keyboard_detail": kb_detail,
+        # None means "could not determine", which is not the same as False
+        # and must not be flattened into it.
         "wtype_supported": wtype_supported(),
+        "wtype_supported_detail": _wtype_detail(),
         "pointer": ptr_ok,
         "pointer_detail": ptr_why,
-        "scroll": ptr_ok,  # same ydotoold backend as click/move
+        # --- everything below shares the pointer's uinput backend ---
+        "scroll": ptr_ok,
         "directional_scroll": ptr_ok,
         "drag": ptr_ok,
         "drag_interpolation": ptr_ok,
         "smooth_drag": ptr_ok,
         "gestures": ptr_ok,
         "mouse_down_up": ptr_ok,
-        "key_down_up": kb_backend is not None,
         "click_modifiers": ptr_ok,
         "hover": ptr_ok,
-        "zoom": bool(shutil.which("spectacle")),
-        "cursor_stamping": bool(shutil.which("magick") or shutil.which("convert")),
-        "coordinate_grid": bool(shutil.which("magick") or shutil.which("convert")),
-        "visual_annotations": bool(shutil.which("magick") or shutil.which("convert")),
         "click_element": ptr_ok,
-        "ocr": bool(shutil.which("tesseract")),
-        "image_compare": bool(shutil.which("compare")),
-        "multi_display": bool(shutil.which("kscreen-doctor")),
-        "app_orchestration": True,
-        "window_relative_coords": scripting or available(),
+        "key_down_up": kb_backend is not None,
         "batch_actions": ptr_ok,
-        "clipboard": bool(shutil.which("wl-copy")) and bool(shutil.which("wl-paste")),
-        "grim": bool(shutil.which("grim")),
+        # --- binary-gated, computed from CAPABILITY_REQUIRES ---
+        "grim": _have("grim") is not None,
         "screen_scale": _screen_scale(),
     }
+    for name in CAPABILITY_REQUIRES:
+        caps[name] = _missing_for(name)[0]
+    # kscreen-doctor being installed is not the same as there being a second
+    # display, so this one is asked rather than assumed. It costs one more
+    # query on top of the one _screen_scale() already made.
+    md_ok, md_missing, _ = _missing_for("multi_display")
+    md_count = 0
+    if md_ok:
+        md_count = display_info().get("count") or 0
+    caps["multi_display"] = md_ok and md_count > 1
+    caps["multi_display_detail"] = (
+        f"ok ({md_count} enabled outputs)"
+        if caps["multi_display"]
+        else (
+            "install: " + ", ".join(md_missing)
+            if md_missing
+            else f"only {md_count} enabled output(s) — nothing to switch between"
+        )
+    )
+    # Was hardcoded True, i.e. never probed and always yes. It means "is there
+    # any way to start a desktop entry": gio for tools.py's launch_app,
+    # gtk-launch for this module's own focus_or_launch fallback. Either will
+    # do, so it is an any-of rather than another entry in the table above.
+    caps["app_orchestration"] = bool(_have("gio") or _have("gtk-launch"))
+    caps["app_orchestration_detail"] = (
+        "ok"
+        if caps["app_orchestration"]
+        else "no gio and no gtk-launch — desktop entries cannot be started"
+    )
+    # Not a capability, a known-bad idea on this platform, reported so the
+    # model does not reach for it: wlr-screencopy is a wlroots protocol and
+    # KWin does not implement it, so grim is only ever useful on a wlroots
+    # compositor. observe_screen's spectacle path is the one that works here.
+    caps["grim"] = caps["grim"] and not kwin_up
+    caps["grim_detail"] = (
+        "ok (no KWin on this display, so wlr-screencopy may be available)"
+        if caps["grim"]
+        else (
+            "wlr-screencopy is a wlroots protocol and KWin does not implement "
+            "it — grim cannot capture on this session. Use observe_screen."
+            if kwin_up
+            else "grim not installed"
+        )
+    )
+    return caps
+
+
+CAPS_CACHE_MAX_AGE = 120.0
+
+
+def _caps_cache_path():
+    base = os.environ.get("XDG_RUNTIME_DIR") or "/tmp"
+    return os.path.join(base, "argus", "caps.json")
+
+
+def capabilities_cached(max_age=CAPS_CACHE_MAX_AGE):
+    """capabilities(), reusing a live probe up to `max_age` seconds old.
+
+    The full probe spawns ~9 subprocesses (KWin scripting round trip,
+    busctl, kscreen) and cost ~120ms at the start of *every* task — each
+    message runs in a fresh worker, so nothing in-process survived. The
+    daemon refreshes this cache in the background (startup, after each
+    task, when the panel opens), so a task normally finds it warm; a stale
+    or missing cache falls back to probing live, exactly as before.
+    """
+    path = _caps_cache_path()
+    try:
+        if time.time() - os.path.getmtime(path) <= max_age:
+            with open(path, encoding="utf-8") as fh:
+                caps = json.load(fh)
+            if isinstance(caps, dict) and caps:
+                return caps
+    except (OSError, ValueError):
+        pass
+    return refresh_capabilities_cache()
+
+
+def refresh_capabilities_cache():
+    """Probe live and atomically rewrite the cache; returns the fresh map."""
+    caps = capabilities()
+    path = _caps_cache_path()
+    try:
+        os.makedirs(os.path.dirname(path), mode=0o700, exist_ok=True)
+        tmp = f"{path}.{os.getpid()}.tmp"
+        with open(tmp, "w", encoding="utf-8") as fh:
+            json.dump(caps, fh)
+        os.replace(tmp, path)
+    except (OSError, TypeError, ValueError):
+        pass
+    return caps
+
+
+def capability_report(flat=None):
+    """Per-capability detail: available, what is missing, and known caveats.
+
+    The flat map in capabilities() answers "can I do this". This answers "can
+    I do this, and what will bite me if I do" — which is the half that used to
+    be unavailable to anyone but the author, because it lived in the comments
+    beside the code that had to discover it. It is deliberately shaped for a
+    third-party agent: every unavailable capability carries the specific fix,
+    and every available one carries its limitation.
+
+    Pass `flat` to reuse an already-computed capabilities() map. Probing is
+    not free — it loads a KWin script and shells out several times — so the
+    caller that just called capabilities() should hand the result here rather
+    than have this call it a second time.
+    """
+    flat = capabilities() if flat is None else flat
+    report = {}
+    for name, available in flat.items():
+        if not isinstance(available, bool):
+            continue  # keyboard_backend, pointer_detail, screen_scale, ...
+        entry = {"available": available}
+        ok, missing, present = _missing_for(name)
+        if CAPABILITY_REQUIRES.get(name) and not ok:
+            entry["missing"] = missing
+            entry["fix"] = "install: " + ", ".join(missing)
+        if not available and "fix" not in entry:
+            detail = flat.get(name + "_detail")
+            if detail:
+                entry["why"] = detail
+        note = CAPABILITY_NOTES.get(name)
+        if note:
+            entry["caveat"] = note
+        report[name] = entry
+    return report

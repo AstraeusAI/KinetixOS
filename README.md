@@ -87,6 +87,10 @@ What you get:
   / palette / widget buttons, active window, clock, **live resource monitor**
   (CPU/RAM/GPU sparklines + network), now-playing (MPRIS), tray, audio/battery,
   agent pill.
+- **Kinetix Taskbar** — Vista-inspired, bottom-docked glass taskbar, with live
+  buttons for open windows and terminals, app icons, focus state, close
+  controls, and hover cards with window state and focus/minimize/close actions.
+  Actual window thumbnails are not implemented yet.
 - **App Launcher** — full-screen glass launcher (`▦` in the bar): 60+ apps with
   real icons, search, category filters, favourites (right-click to pin),
   full keyboard navigation.

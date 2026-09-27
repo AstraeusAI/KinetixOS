@@ -1,0 +1,52 @@
+#!/usr/bin/env bash
+# kinetix-firewall — the default-deny firewall, on by default on an installed
+# system. Closes the open item from the distro's own security review.
+#
+# Policy: deny all incoming, allow all outgoing, and open exactly one port —
+# 53317 for LocalSend, the one local-network service the desktop expects to
+# be reachable. ssh stays closed until the user asks for it (`kinetix firewall
+# allow-ssh`), rather than being open by default the way a stock ufw install
+# leaves nothing but the option.
+set -Eeuo pipefail
+
+die() { printf 'kinetix-firewall: %s\n' "$*" >&2; exit 1; }
+need_root() { (( EUID == 0 )) || exec sudo -- "$0" "$@"; }
+
+command -v ufw >/dev/null 2>&1 || die "ufw is not installed (pacman -S ufw)"
+
+action="${1:-status}"
+case "$action" in
+    status)
+        ufw status verbose
+        ;;
+    enable|on)
+        need_root "$@"
+        # Idempotent by construction: `default` overwrites, `allow` updates an
+        # existing matching rule rather than adding a duplicate, and --force
+        # skips the "this may disrupt existing ssh connections" prompt that
+        # would otherwise block an unattended run.
+        ufw default deny incoming
+        ufw default allow outgoing
+        ufw allow 53317/tcp comment 'LocalSend'
+        ufw allow 53317/udp comment 'LocalSend'
+        ufw --force enable
+        printf 'Default-deny firewall enabled (incoming blocked except LocalSend 53317).\n'
+        ;;
+    allow-ssh)
+        need_root "$@"
+        # `limit` rate-limits rather than plainly allowing, matching the
+        # brute-force protection the security notes call for.
+        ufw limit 22/tcp comment 'ssh (rate-limited)'
+        printf 'ssh (22/tcp) opened, rate-limited.\n'
+        ;;
+    disable|off)
+        need_root "$@"
+        ufw --force disable
+        ;;
+    -h|--help|help)
+        printf 'usage: kinetix firewall [status|enable|allow-ssh|disable]\n'
+        ;;
+    *)
+        die "unknown action '$action' (try: status, enable, allow-ssh, disable)"
+        ;;
+esac

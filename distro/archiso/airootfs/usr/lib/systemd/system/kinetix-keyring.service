@@ -1,0 +1,13 @@
+[Unit]
+Description=Initialize KinetixOS package signing keys
+After=local-fs.target
+Before=sddm.service
+ConditionPathExists=/usr/share/pacman/keyrings/cachyos.gpg
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/kinetix-keyring-init
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

@@ -611,5 +611,123 @@ class AdapterShapeTests(unittest.TestCase):
         self.assertEqual("data:image/png;base64,AAA", block["image_url"]["url"])
 
 
+class PromptCacheBreakpointTests(unittest.TestCase):
+    """The Anthropic request marks up its cacheable prefix.
+
+    Measured on this host: the system prompt is ~5.5k tokens and the 59 tool
+    schemas ~8.2k, so ~13.7k tokens of the request are byte-identical on every
+    call of a task. At MAX_STEPS=64 that is ~875k tokens of re-sent static
+    prefix per task, ~861k of it pure duplication. to_anthropic used to
+    flatten every system message into one joined string, and Anthropic only
+    lets a breakpoint sit on a block — so there was exactly one cacheable unit
+    covering both the constant preamble and the parts that change mid-task,
+    and it missed on every call after the first todo tick.
+    """
+
+    def tiers(self):
+        return [
+            {"role": "system", "content": "PROMPT", "cache": "stable"},
+            {"role": "system", "content": "WSINFO", "cache": "stable"},
+            {"role": "system", "content": "MEMORIES", "cache": "semi"},
+            {"role": "system", "content": "PLAN"},
+            {"role": "user", "content": "go"},
+        ]
+
+    def test_the_system_side_keeps_its_order_and_its_tiers(self):
+        systems, _ = argusd.to_anthropic(self.tiers())
+        self.assertEqual(
+            [x["text"] for x in systems],
+            ["PROMPT", "WSINFO", "MEMORIES", "PLAN"],
+        )
+        self.assertEqual([x["cache"] for x in systems],
+                         ["stable", "stable", "semi", None])
+
+    def test_a_breakpoint_lands_at_the_end_of_each_tier(self):
+        systems, _ = argusd.to_anthropic(self.tiers())
+        blocks = argusd.anthropic_system_blocks(systems)
+        marked = [b["text"] for b in blocks if "cache_control" in b]
+        # Tier 1 covers the constant preamble; tier 2 the semi-stable band.
+        # Nothing after the last one is cached, so the per-step budget notice
+        # can change every step without invalidating either.
+        self.assertEqual(marked, ["WSINFO", "MEMORIES"])
+
+    def test_a_volatile_block_is_never_inside_a_cache_unit(self):
+        systems, _ = argusd.to_anthropic(self.tiers())
+        blocks = argusd.anthropic_system_blocks(systems)
+        self.assertNotIn("cache_control", blocks[-1])
+
+    def test_an_unchanged_prefix_produces_an_unchanged_request(self):
+        # The property the whole thing is for: two calls a step apart, with
+        # only the step-budget notice differing, must yield byte-identical
+        # cacheable blocks.
+        first = [
+            {"role": "system", "content": "PROMPT", "cache": "stable"},
+            {"role": "system", "content": "WSINFO", "cache": "stable"},
+            {"role": "system", "content": "step 3 of 64"},
+            {"role": "user", "content": "go"},
+        ]
+        second = [dict(m) for m in first]
+        second[2] = {"role": "system", "content": "step 4 of 64"}
+        import json as _json
+
+        def blocks(msgs):
+            systems, _ = argusd.to_anthropic(msgs)
+            return _json.dumps(argusd.anthropic_system_blocks(systems)[:2])
+
+        self.assertEqual(blocks(first), blocks(second))
+
+    def test_a_tier_that_moves_still_caches_the_constant_part(self):
+        # The plan ticking over is exactly the case that used to cost the
+        # whole unit: the stable prefix must be unaffected by it.
+        def blocks(plan):
+            systems, _ = argusd.to_anthropic(
+                [{"role": "system", "content": "PROMPT", "cache": "stable"},
+                 {"role": "system", "content": plan, "cache": "semi"}]
+            )
+            return argusd.anthropic_system_blocks(systems)
+
+        first, again = blocks("PLAN-A")[0], blocks("PLAN-B")[0]
+        self.assertIn("cache_control", first)
+        self.assertEqual(first, again)
+
+    def test_the_last_tool_carries_the_tools_breakpoint(self):
+        cached = argusd.cached_tools(argusd.TOOLS)
+        self.assertIn("cache_control", cached[-1])
+        self.assertEqual(len(cached), len(argusd.TOOLS))
+        # Only the last one: Anthropic treats the marker as covering the whole
+        # tools block, and marking every entry would be noise.
+        self.assertNotIn("cache_control", cached[0])
+
+    def test_caching_does_not_mutate_the_shared_tool_table(self):
+        argusd.cached_tools(argusd.TOOLS)
+        self.assertNotIn("cache_control", argusd.TOOLS[-1])
+
+    def test_an_empty_tool_list_does_not_explode(self):
+        self.assertEqual(argusd.cached_tools([]), [])
+
+    def test_system_with_no_declared_tier_still_gets_one_breakpoint(self):
+        blocks = argusd.anthropic_system_blocks([{"text": "x", "cache": None}])
+        self.assertIn("cache_control", blocks[0])
+
+    def test_a_request_with_no_system_content_at_all_is_still_valid(self):
+        self.assertEqual(argusd.anthropic_system_blocks([]), [])
+        _systems, msgs = argusd.to_anthropic([{"role": "user", "content": "go"}])
+        self.assertEqual(argusd.anthropic_system_blocks([]), [])
+        self.assertEqual([m["role"] for m in msgs], ["user"])
+
+    def test_the_other_adapters_ignore_the_cache_tier(self):
+        # to_openai and to_codex read only role/content, so a request built for
+        # Anthropic must not become malformed for them.
+        msgs = self.tiers()
+        for shaped in (argusd.to_openai(msgs), argusd.to_codex(msgs)[1]):
+            for m in shaped:
+                self.assertNotIn("cache", m)
+
+    def test_codex_still_folds_system_messages_into_instructions(self):
+        instructions, _ = argusd.to_codex(self.tiers())
+        for text in ("PROMPT", "WSINFO", "MEMORIES", "PLAN"):
+            self.assertIn(text, instructions)
+
+
 if __name__ == "__main__":
     unittest.main()

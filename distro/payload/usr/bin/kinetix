@@ -1,0 +1,76 @@
+#!/usr/bin/env bash
+# kinetix — the KinetixOS control command.
+#
+# A thin dispatcher: every subcommand is its own kinetix-<name> executable in
+# the same directory, so each one can be read, tested and run on its own. This
+# file only decides which to call and keeps `kinetix --help` in one place.
+#
+# Installed on an installed system this is /usr/bin/kinetix; on the live ISO
+# the same file is baked into the live root so the helper works before the
+# first update ever runs.
+set -Eeuo pipefail
+
+SELF_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+
+subcommands() {
+    # name<TAB>one-line description, in the order --help should print them.
+    cat <<'EOF'
+update	Update the whole system: snapshot, pacman -Syu, then run migrations
+check	Report whether updates are available (exit 10 when there are)
+snapshot	Take a rollback snapshot of the root before a risky change
+sudo-passwordless	Grant temporary passwordless sudo, auto-revoked on a timer
+firewall	Show or apply the default-deny firewall policy
+diagnose-crash	Hand a captured crash to the agent, optionally for one PID
+version	Print the installed KinetixOS version
+migrations	List migrations and which have been applied
+EOF
+}
+
+usage() {
+    printf 'KinetixOS control — usage: kinetix <command> [args]\n\n'
+    while IFS=$'\t' read -r name desc; do
+        printf '  %-18s %s\n' "$name" "$desc"
+    done < <(subcommands)
+    printf '\nRun `kinetix <command> --help` for command-specific options.\n'
+}
+
+main() {
+    if (( $# == 0 )) || [[ "${1:-}" == "--help" || "${1:-}" == "-h" || "${1:-}" == "help" ]]; then
+        usage
+        return 0
+    fi
+
+    local sub="$1"; shift
+    case "$sub" in
+        version)
+            # The package writes this file; env override so the value can be
+            # read without installing. Deliberately no `cmd && ...` chain —
+            # a false test there would trip `set -e` out of the dispatcher.
+            local vf="${KINETIX_VERSION_FILE:-/usr/share/kinetix/version}" v="unknown"
+            if [[ -r "$vf" ]]; then
+                v="$(<"$vf")"
+            fi
+            printf 'KinetixOS %s\n' "$v"
+            ;;
+        # `migrations` is small enough to live here rather than in its own
+        # file; it is a read-only view of the state kinetix-update writes.
+        migrations)
+            exec "$SELF_DIR/kinetix-migrations" "$@"
+            ;;
+        update|check|snapshot|sudo-passwordless|firewall|diagnose-crash)
+            local helper="$SELF_DIR/kinetix-$sub"
+            if [[ ! -x "$helper" ]]; then
+                printf 'kinetix: %s is missing or not executable (%s)\n' "$sub" "$helper" >&2
+                exit 127
+            fi
+            exec "$helper" "$@"
+            ;;
+        *)
+            printf 'kinetix: unknown command %q\n\n' "$sub" >&2
+            usage >&2
+            exit 2
+            ;;
+    esac
+}
+
+main "$@"

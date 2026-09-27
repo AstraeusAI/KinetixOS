@@ -86,7 +86,9 @@ VERIFY = {
         # agent's own "lint passed" claims were true-but-incomplete
         # because the default ruleset never checked it.
         "format": ["ruff", "format"],
-        "lint": ["ruff", "check", "--select", "E,F"],
+        # Per-write verification must not leave .ruff_cache behind for the
+        # final deliverable gate to mistake for a project artifact.
+        "lint": ["ruff", "check", "--select", "E,F", "--no-cache"],
         "test": ["python3", "-m", "pytest", "-q"],
     },
     "javascript": {
@@ -257,7 +259,27 @@ class Workspace:
         # dozen times over for a result that cannot change mid-process
         # (pytest/unittest's importability isn't going to flip between one
         # edit and the next).
+        import importlib.util
         import subprocess
+        import sys
+
+        # Fast path: when `python3` on PATH *is* this interpreter, ask the
+        # import system directly instead of spawning `python3 -c "import …"`
+        # (~160ms per task: every message runs in a fresh worker, so the
+        # lru_cache above never survived between tasks). find_spec answers
+        # the same question — "would `import pytest` resolve" — without
+        # importing anything. Any other python3 falls back to the probe.
+        py = _which("python3")
+        try:
+            same = py is not None and os.path.realpath(py) == os.path.realpath(sys.executable)
+        except OSError:
+            same = False
+        if same:
+            if importlib.util.find_spec("pytest") is not None:
+                return ["python3", "-m", "pytest", "-q"]
+            if importlib.util.find_spec("unittest") is not None:
+                return ["python3", "-m", "unittest", "discover", "-q"]
+            return None
 
         for probe, cmd in (
             (("import", "pytest"), ["python3", "-m", "pytest", "-q"]),

@@ -146,6 +146,8 @@ def build_argv(
     net=False,
     sandbox=True,
     cwd=None,
+    home_access=True,
+    systemd_scope=True,
 ) -> list:
     """argv for running `command` (a shell string) under the sandbox.
 
@@ -165,7 +167,7 @@ def build_argv(
         return ["/bin/sh", "-c", command]
 
     argv = []
-    if have_systemd_run():
+    if systemd_scope and have_systemd_run():
         argv += [
             "systemd-run",
             "--user",
@@ -188,7 +190,7 @@ def build_argv(
         argv += ["--ro-bind", str(p), str(p)]
     flag = "--bind" if write_workspace else "--ro-bind"
     home = Path.home()
-    if home.is_dir():
+    if home_access and home.is_dir():
         # Bound and pointed to by $HOME at the *same* real path, so `~`
         # inside the sandboxed shell resolves to the directory that is
         # actually bound, not a stand-in the bind doesn't match.
@@ -295,6 +297,7 @@ def run(
     sandbox=True,
     timeout=60,
     cwd=None,
+    home_access=True,
 ):
     """Run a command sandboxed. Returns a result dict; never raises for the
     command's own failures.
@@ -323,6 +326,7 @@ def run(
         net=net,
         sandbox=sandbox,
         cwd=cwd,
+        home_access=home_access,
     )
     # CPU_QUOTA allows up to 2 cores, so a legitimate multi-threaded command
     # can burn up to ~2x its wall-clock timeout in CPU-seconds; give the

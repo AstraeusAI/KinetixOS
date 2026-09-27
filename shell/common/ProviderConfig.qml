@@ -1,5 +1,6 @@
 pragma Singleton
 import QtQuick
+import Quickshell
 import Quickshell.Io
 
 // LLM provider registry — exactly four providers:
@@ -72,12 +73,23 @@ QtObject {
     property var keys: ({})
     property bool keysLoaded: false
 
-    property Process keysReader: Process {
-        command: ["sh", "-c", "cat " + ProviderConfig.keysPath + " 2>/dev/null"]
-        running: true
-        stdout: StdioCollector {
-            onStreamFinished: ProviderConfig.loadKeys(this.text)
-        }
+    // Read in-process (no sh+cat fork every 2.5s): inotify picks up writes
+    // instantly, and the refresh timer still re-reads on the old cadence so a
+    // vault created later, or edited by the runtime/a terminal, is caught
+    // exactly as before. Unchanged text is not re-parsed.
+    property string _keysText: "\u0000"
+    function _ingestKeys(t) {
+        if (t === _keysText) return;
+        _keysText = t;
+        loadKeys(t);
+    }
+    property FileView keysFile: FileView {
+        path: Quickshell.env("HOME") + "/.config/argus/keys.env"
+        watchChanges: true
+        printErrors: false
+        onFileChanged: reload()
+        onLoaded: ProviderConfig._ingestKeys(text())
+        onLoadFailed: ProviderConfig._ingestKeys("")
     }
     // The vault can be updated by the runtime, a terminal, or a hot-reloaded
     // shell. Keep singleton state honest instead of showing a stale “NO KEY”.
@@ -85,10 +97,7 @@ QtObject {
         interval: 2500
         repeat: true
         running: true
-        onTriggered: {
-            if (!ProviderConfig.keysReader.running)
-                ProviderConfig.keysReader.running = true;
-        }
+        onTriggered: ProviderConfig.keysFile.reload()
     }
     property Process keysWriter: Process {}
 

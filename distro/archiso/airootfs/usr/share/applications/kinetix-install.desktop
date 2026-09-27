@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=Install KinetixOS
+Comment=Install KinetixOS to a disk and create your user account
+Exec=quickshell -p /usr/share/kinetix/shell ipc call argus openInstaller
+TryExec=quickshell
+Icon=system-installer
+Terminal=false
+Type=Application
+Categories=System;

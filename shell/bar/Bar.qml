@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Controls
 import Quickshell
 import Quickshell.Wayland
 import Quickshell.Services.SystemTray
@@ -9,6 +10,9 @@ PanelWindow {
     id: bar
     required property ShellScreen modelData
     screen: modelData
+
+    readonly property bool compactLayout: width < 1500
+    readonly property bool ultraCompactLayout: width < 1400
 
     anchors { top: true; left: true; right: true }
     margins { top: 0; left: 0; right: 0 }
@@ -32,8 +36,9 @@ PanelWindow {
             var pt = appCenterCap.mapToItem(barGlass, appCenterCap.width / 2, 0);
             AgentState.appCenterRightMargin = Math.max(16, (barGlass.width - pt.x) - 680 / 2);
         }
-        if (typeof sysMonitorCap !== "undefined" && sysMonitorCap && sysMonitorCap.width > 0 && typeof barGlass !== "undefined" && barGlass) {
-            var spt = sysMonitorCap.mapToItem(barGlass, sysMonitorCap.width / 2, 0);
+        var sysCap = typeof sysMonitorCap !== "undefined" && sysMonitorCap ? sysMonitorCap.item : null;
+        if (sysCap && sysCap.width > 0 && typeof barGlass !== "undefined" && barGlass) {
+            var spt = sysCap.mapToItem(barGlass, sysCap.width / 2, 0);
             AgentState.sysRightMargin = Math.max(16, (barGlass.width - spt.x) - 540 / 2);
         }
     }
@@ -63,12 +68,186 @@ PanelWindow {
         level: 3
         baseColor: Theme.barBase
         rim: false
-        sheen: true
+        sheen: false
         opacity: enter
         transform: Translate { y: -bar.height * (1 - enter) }
 
+        function centerIslandX(centerWidth) {
+            var minX = leftGroup.x + leftGroup.width + Theme.s2;
+            var maxX = rightGroup.x - Theme.s2 - centerWidth;
+            var preferredX = (width - centerWidth) / 2;
+            if (maxX < minX) return minX;
+            return Math.max(minX, Math.min(preferredX, maxX));
+        }
+
+        // ── High-Fidelity Glassmorphism Optical Substrate ─────────────
+        // 1. Restrained smoked-wine depth wash. The translucent base lets KWin's
+        // backdrop blur do the heavy lifting; this adds a soft tint, not an opaque fill.
+        Rectangle {
+            anchors.fill: parent
+            z: 0
+            gradient: Gradient {
+                orientation: Gradient.Vertical
+                GradientStop { position: 0.0; color: Qt.rgba(1, 0.94, 0.96, 0.055) }
+                GradientStop { position: 0.20; color: Qt.rgba(0.20, 0.055, 0.075, 0.10) }
+                GradientStop { position: 0.72; color: Qt.rgba(0.025, 0.018, 0.026, 0.12) }
+                GradientStop { position: 1.0; color: Qt.rgba(0.34, 0.045, 0.075, 0.22) }
+            }
+        }
+
+        // 2. Sub-surface optical meniscus (inner top bevel): creates the 3D
+        // optical refraction of a polished glass slab's top chamfer.
+        Rectangle {
+            anchors { top: parent.top; left: parent.left; right: parent.right }
+                height: 4
+            z: 1
+            gradient: Gradient {
+                orientation: Gradient.Vertical
+                GradientStop { position: 0.0; color: Qt.rgba(0, 0, 0, 0.18) }
+                GradientStop { position: 1.0; color: "transparent" }
+            }
+        }
+
+        // 3. Soft edge falloff keeps the full-width strip distinct without crushing
+        // wallpaper detail or making both ends look like opaque blocks.
+        Rectangle {
+            anchors { left: parent.left; top: parent.top; bottom: parent.bottom }
+            width: 150
+            z: 1
+            gradient: Gradient {
+                orientation: Gradient.Horizontal
+                GradientStop { position: 0.0; color: Qt.rgba(0.035, 0.012, 0.020, 0.34) }
+                GradientStop { position: 0.40; color: Qt.rgba(0.035, 0.012, 0.020, 0.12) }
+                GradientStop { position: 1.0; color: "transparent" }
+            }
+        }
+        Rectangle {
+            anchors { right: parent.right; top: parent.top; bottom: parent.bottom }
+            width: 150
+            z: 1
+            gradient: Gradient {
+                orientation: Gradient.Horizontal
+                GradientStop { position: 0.0; color: "transparent" }
+                GradientStop { position: 0.60; color: Qt.rgba(0.035, 0.012, 0.020, 0.12) }
+                GradientStop { position: 1.0; color: Qt.rgba(0.035, 0.012, 0.020, 0.34) }
+            }
+        }
+
+        // 4. Multi-stop overhead Fresnel specular hairline (y = 0): diamond-bright center crest.
+        Rectangle {
+            anchors { top: parent.top; left: parent.left; right: parent.right }
+            height: 1
+            z: 2
+            gradient: Gradient {
+                orientation: Gradient.Horizontal
+                GradientStop { position: 0.0; color: "transparent" }
+                GradientStop { position: 0.15; color: Qt.rgba(1, 1, 1, 0.08) }
+                GradientStop { position: 0.35; color: Qt.rgba(1, 1, 1, 0.11) }
+                GradientStop { position: 0.50; color: Qt.rgba(1, 1, 1, 0.22) }
+                GradientStop { position: 0.65; color: Qt.rgba(1, 1, 1, 0.11) }
+                GradientStop { position: 0.85; color: Qt.rgba(1, 1, 1, 0.08) }
+                GradientStop { position: 1.0; color: "transparent" }
+            }
+        }
+
+        // 5. Secondary machined inner bevel line (y = 1): simulates double-pass bevel refraction.
+        Rectangle {
+            anchors { top: parent.top; left: parent.left; right: parent.right; topMargin: 1 }
+            height: 1
+            z: 2
+            gradient: Gradient {
+                orientation: Gradient.Horizontal
+                GradientStop { position: 0.0; color: "transparent" }
+                GradientStop { position: 0.25; color: Qt.rgba(1, 1, 1, 0.04) }
+                GradientStop { position: 0.50; color: Qt.rgba(1, 1, 1, 0.12) }
+                GradientStop { position: 0.75; color: Qt.rgba(1, 1, 1, 0.04) }
+                GradientStop { position: 1.0; color: "transparent" }
+            }
+        }
+
+        // 6. Sub-surface ambient laser bounce reflex: light-piped reflex from the FlowBand laser rail.
+        Rectangle {
+            anchors { bottom: parent.bottom; left: parent.left; right: parent.right }
+            height: 10
+            z: 1
+            opacity: 0.72 + 0.10 * Theme.heartbeatSin
+            gradient: Gradient {
+                orientation: Gradient.Vertical
+                GradientStop { position: 0.0; color: "transparent" }
+                GradientStop { position: 0.55; color: Theme.alpha(Theme.crimson, 0.045) }
+                GradientStop { position: 1.0; color: Theme.alpha(Theme.crimson, 0.13) }
+            }
+        }
+
+        // 7. Luxury dual-beam caustic glass sweep: wide diffuse wave paired with a sharp crystalline micro-filament.
+        Item {
+            anchors.fill: parent
+            clip: true
+            z: 0
+
+            Item {
+                id: glossSweep
+                width: 160
+                height: 200
+                y: (bar.height - height) / 2
+                rotation: 24
+
+                // Pass 1: Wide diffuse atmospheric caustic sheen
+                Rectangle {
+                    anchors.fill: parent
+                    gradient: Gradient {
+                        orientation: Gradient.Horizontal
+                        GradientStop { position: 0.0; color: "transparent" }
+                        GradientStop { position: 0.35; color: Qt.rgba(1, 1, 1, 0.02) }
+                        GradientStop { position: 0.50; color: Qt.rgba(1, 1, 1, 0.05) }
+                        GradientStop { position: 0.65; color: Qt.rgba(1, 1, 1, 0.02) }
+                        GradientStop { position: 1.0; color: "transparent" }
+                    }
+                }
+
+                // Pass 2: High-definition crystalline specular core filament
+                Rectangle {
+                    anchors.centerIn: parent
+                    width: 10
+                    height: parent.height
+                    gradient: Gradient {
+                        orientation: Gradient.Horizontal
+                        GradientStop { position: 0.0; color: "transparent" }
+                        GradientStop { position: 0.50; color: Qt.rgba(1, 1, 1, 0.10) }
+                        GradientStop { position: 1.0; color: "transparent" }
+                    }
+                }
+
+                SequentialAnimation on x {
+                    loops: Animation.Infinite
+                    PauseAnimation { duration: 14000 }
+                    NumberAnimation {
+                        from: -glossSweep.width
+                        to: bar.width + glossSweep.width
+                        duration: 2200
+                        easing.type: Easing.InOutQuad
+                    }
+                }
+            }
+        }
+
+        // Animated red / green / blue light filling the whole bar (the same
+        // light as the dock, components/RgbFlow.qml). It lives inside the
+        // glass and is declared before the pill groups, so every pill draws
+        // on top of it; it inherits the glass's entry fade/slide.
+        RgbFlow {
+            anchors.fill: parent
+            horizontal: true
+            radius: 0
+            amplitude: 1.15
+            boosted: AgentState.status === "working"
+            status: AgentState.status
+            hovered: barHover.hovered
+        }
+
         // ── left ──────────────────────────────────────────
         Row {
+            id: leftGroup
             anchors { left: parent.left; leftMargin: Theme.s4; verticalCenter: parent.verticalCenter }
             spacing: Theme.s2
             opacity: bar.enterL
@@ -87,16 +266,10 @@ PanelWindow {
                     anchors.centerIn: parent
                     spacing: Theme.s2
 
-                    IconButton {
-                        glyph: "▦"
-                        tip: "App Launcher"
-                        tint: Theme.accent2
-                        active: AgentState.launcherOpen
-                        anchors.verticalCenter: parent.verticalCenter
-                        onClicked: AgentState.toggleLauncher()
-                    }
                     ArgusMark {
                         anchors.verticalCenter: parent.verticalCenter
+                        color: Theme.crimson
+                        liveColor: Theme.crimsonText
                         live: AgentState.status !== "idle"
                     }
                     Item {
@@ -104,7 +277,9 @@ PanelWindow {
                         property bool live: AgentState.status !== "idle"
                         readonly property bool activeOrHovered: live || brandWorkspacesPill.hovered || barHover.hovered
                         property real tracking: live ? 2.75 : (brandWorkspacesPill.hovered ? 2.45 : 2.2)
-                        property color signalColor: Theme.statusColor(AgentState.status)
+                        property color signalColor: AgentState.status === "working" ? Theme.crimsonText
+                                                  : AgentState.status === "watching" ? Theme.gilded
+                                                  : AgentState.status === "blocked" ? Theme.alarm : Theme.crimson
                         property real inkOpacity: live ? 1.0 : (brandWorkspacesPill.hovered ? 0.98 : 0.92)
                         property real glowOpacity: live ? 0.16 : (brandWorkspacesPill.hovered ? 0.11 : 0.055)
                         property real signalOpacity: live ? 0.88 : (brandWorkspacesPill.hovered ? 0.58 : 0.28)
@@ -138,6 +313,15 @@ PanelWindow {
                             opacity: kinetixWord.glowOpacity * (0.86 + kinetixWord.breath * 0.14)
                             font: wordBase.font
                             anchors.verticalCenter: parent.verticalCenter
+                        }
+
+                        // Drop shadow for crisp laser-engraved typography contrast
+                        Text {
+                            text: wordBase.text
+                            color: Qt.rgba(0, 0, 0, 0.68)
+                            font: wordBase.font
+                            anchors.verticalCenter: parent.verticalCenter
+                            anchors.verticalCenterOffset: 1
                         }
 
                         Text {
@@ -189,8 +373,8 @@ PanelWindow {
                             Text {
                                 text: wordBase.text
                                 x: -wordSweep.x
-                                color: kinetixWord.signalColor
-                                opacity: kinetixWord.signalOpacity * (0.92 + kinetixWord.breath * 0.08)
+                                color: kinetixWord.live ? Theme.alarm : Theme.crimsonText
+                                opacity: kinetixWord.signalOpacity * (0.94 + kinetixWord.breath * 0.06)
                                 font: wordBase.font
                                 anchors.verticalCenter: parent.verticalCenter
                             }
@@ -202,8 +386,8 @@ PanelWindow {
                         anchors.verticalCenter: parent.verticalCenter
                         gradient: Gradient {
                             GradientStop { position: 0.0; color: "transparent" }
-                            GradientStop { position: 0.25; color: Theme.alpha(Theme.crimson, 0.22) }
-                            GradientStop { position: 0.75; color: Theme.alpha(Theme.crimson, 0.22) }
+                            GradientStop { position: 0.25; color: Theme.alpha(Theme.crimson, 0.40) }
+                            GradientStop { position: 0.75; color: Theme.alpha(Theme.crimson, 0.40) }
                             GradientStop { position: 1.0; color: "transparent" }
                         }
                     }
@@ -213,47 +397,14 @@ PanelWindow {
                     }
                 }
             }
-
-            // Box 2: Active Window Capsule
-            ActiveWindow {
-                anchors.verticalCenter: parent.verticalCenter
-            }
         }
 
-        // A restrained inner keyline gives the bar a machined, precision edge
-        // without competing with the bottom laser rail. Warmed to a faint
-        // anodized-red hairline so the edge reads as part of the bar's own
-        // deep-red glass rather than a leftover neutral outline.
-        Rectangle {
-            anchors.fill: parent
-            anchors.margins: 1
-            radius: 0
-            color: "transparent"
-            border.width: 1
-            border.color: Theme.barStroke
-            z: 20
-
-            // Overhead grazing light on upper inner bevel
-            Rectangle {
-                anchors { left: parent.left; right: parent.right; top: parent.top; margins: 1 }
-                anchors.leftMargin: 16
-                anchors.rightMargin: 16
-                height: 1
-                gradient: Gradient {
-                    orientation: Gradient.Horizontal
-                    GradientStop { position: 0.0; color: "transparent" }
-                    GradientStop { position: 0.15; color: Qt.rgba(1, 1, 1, 0.12) }
-                    GradientStop { position: 0.50; color: Qt.rgba(1, 1, 1, 0.22) }
-                    GradientStop { position: 0.85; color: Qt.rgba(1, 1, 1, 0.12) }
-                    GradientStop { position: 1.0; color: "transparent" }
-                }
-            }
-        }
 
         // ── center: Luxury Glass Time & Search Island ──
         BarBox {
             id: centerPill
-            anchors.centerIn: parent
+            x: barGlass.centerIslandX(width)
+            anchors.verticalCenter: parent.verticalCenter
             implicitWidth: centerContentRow.implicitWidth + Theme.s4 * 2
             interactive: true
             active: AgentState.paletteOpen
@@ -265,22 +416,32 @@ PanelWindow {
                 id: centerContentRow
                 anchors.centerIn: parent
                 spacing: Theme.s2
+                // Micro vertical center alignment
+                anchors.verticalCenter: parent.verticalCenter
 
                 Rectangle {
-                    width: 17
-                    height: 17
-                    radius: 4
-                    color: centerPill.hovered ? Theme.alpha(Theme.crimson, 0.16) : Qt.rgba(1, 1, 1, 0.05)
+                    width: 18
+                    height: 18
+                    radius: 4.5
+                    color: centerPill.hovered ? Theme.alpha(Theme.crimson, 0.28) : Theme.alpha(Theme.crimson, 0.10)
                     border.width: 1
-                    border.color: centerPill.hovered ? Theme.alpha(Theme.crimson, 0.45) : Qt.rgba(1, 1, 1, 0.10)
+                    border.color: centerPill.hovered ? Theme.alpha(Theme.crimson, 0.65) : Theme.alpha(Theme.crimson, 0.26)
                     anchors.verticalCenter: parent.verticalCenter
                     Behavior on color { ColorAnimation { duration: Theme.durFast } }
                     Behavior on border.color { ColorAnimation { duration: Theme.durFast } }
 
+                    // Upper micro-sheen on keycap
+                    Rectangle {
+                        anchors { left: parent.left; right: parent.right; top: parent.top; margins: 1 }
+                        height: 1
+                        radius: 4
+                        color: Qt.rgba(1, 1, 1, centerPill.hovered ? 0.30 : 0.14)
+                    }
+
                     Text {
                         anchors.centerIn: parent
                         text: "⌘"
-                        color: centerPill.hovered ? Theme.crimsonText : Theme.textDim
+                        color: centerPill.hovered ? Theme.crimsonText : Theme.alpha(Theme.crimsonText, 0.90)
                         font.pixelSize: 10
                         font.family: Theme.fontMono
                         font.weight: Font.DemiBold
@@ -290,6 +451,7 @@ PanelWindow {
 
                 ClockWidget {
                     id: clockItem
+                    compact: bar.ultraCompactLayout
                     anchors.verticalCenter: parent.verticalCenter
                 }
             }
@@ -297,6 +459,7 @@ PanelWindow {
 
         // ── right ─────────────────────────────────────────
         Row {
+            id: rightGroup
             anchors { right: parent.right; rightMargin: Theme.s4; verticalCenter: parent.verticalCenter }
             spacing: Theme.s2
             opacity: bar.enterR
@@ -305,17 +468,33 @@ PanelWindow {
             // App Center & Package Hub Capsule
             AppCenterCapsule {
                 id: appCenterCap
+                compact: bar.compactLayout
                 anchors.verticalCenter: parent.verticalCenter
+                onXChanged: bar.updatePopupOffsets()
+                onWidthChanged: bar.updatePopupOffsets()
             }
 
-            // Box 5: System Telemetry Capsule
-            SysMonitor {
+            // Box 5: System telemetry capsule. The compact component keeps the
+            // popup action while moving dense graphs into the existing detail view.
+            Component {
+                id: compactTelemetryComponent
+                CompactTelemetry {}
+            }
+            Component {
+                id: detailedTelemetryComponent
+                SysMonitor {}
+            }
+            Loader {
                 id: sysMonitorCap
+                sourceComponent: bar.compactLayout ? compactTelemetryComponent : detailedTelemetryComponent
                 anchors.verticalCenter: parent.verticalCenter
+                onXChanged: bar.updatePopupOffsets()
+                onWidthChanged: bar.updatePopupOffsets()
             }
 
             // Box 6: Media / Now Playing Capsule
             NowPlaying {
+                compact: bar.compactLayout
                 anchors.verticalCenter: parent.verticalCenter
             }
 
@@ -342,14 +521,106 @@ PanelWindow {
                         anchors.verticalCenter: parent.verticalCenter
                         gradient: Gradient {
                             GradientStop { position: 0.0; color: "transparent" }
-                            GradientStop { position: 0.25; color: Theme.alpha(Theme.crimson, 0.22) }
-                            GradientStop { position: 0.75; color: Theme.alpha(Theme.crimson, 0.22) }
+                            GradientStop { position: 0.20; color: Theme.alpha(Theme.crimson, 0.35) }
+                            GradientStop { position: 0.50; color: Qt.rgba(1, 1, 1, 0.25) }
+                            GradientStop { position: 0.80; color: Theme.alpha(Theme.crimson, 0.35) }
                             GradientStop { position: 1.0; color: "transparent" }
                         }
                     }
 
                     StatusCluster {
                         anchors.verticalCenter: parent.verticalCenter
+                    }
+                }
+            }
+
+            // Box 7a: Update capsule — a badge when `kinetix check` reports
+            // updates, click to run `kinetix update` in a terminal. New
+            // addition borrowed from Omarchy; every capsule around it is
+            // unchanged.
+            UpdateCapsule {
+                id: updateCap
+                anchors.verticalCenter: parent.verticalCenter
+            }
+
+            // Box 7b: Notification bell — opens the Notification Center. Badge
+            // shows the live count, a slash marks do-not-disturb, and the bell
+            // rocks when something arrives.
+            BarBox {
+                id: notifBell
+                implicitWidth: 44
+                interactive: true
+                active: AgentState.notifOpen
+                activeColor: Theme.crimson
+                anchors.verticalCenter: parent.verticalCenter
+                onClicked: AgentState.toggleNotifs()
+                HoverTip { target: notifBell; hovered: notifBell.hovered; text: Notif.dnd ? "Notifications (do not disturb)" : "Notifications" }
+
+                Item {
+                    id: bellArt
+                    anchors.centerIn: parent
+                    width: 18; height: 18
+                    transformOrigin: Item.Top
+                    SequentialAnimation {
+                        id: ring
+                        NumberAnimation { target: bellArt; property: "rotation"; to: 16; duration: 90; easing.type: Easing.OutQuad }
+                        NumberAnimation { target: bellArt; property: "rotation"; to: -13; duration: 130; easing.type: Easing.InOutQuad }
+                        NumberAnimation { target: bellArt; property: "rotation"; to: 9; duration: 120; easing.type: Easing.InOutQuad }
+                        NumberAnimation { target: bellArt; property: "rotation"; to: -5; duration: 110; easing.type: Easing.InOutQuad }
+                        NumberAnimation { target: bellArt; property: "rotation"; to: 0; duration: 140; easing.type: Easing.OutQuad }
+                    }
+                    Connections {
+                        target: typeof Notif !== "undefined" ? Notif : null
+                        ignoreUnknownSignals: true
+                        function onArrived(nid, toasted) { ring.restart(); }
+                    }
+                    Canvas {
+                        id: bellCanvas
+                        anchors.fill: parent
+                        property color stroke: AgentState.notifOpen ? Theme.crimsonText
+                                                : (notifBell.hovered ? Theme.text : Theme.textDim)
+                        property bool dnd: (typeof Notif !== "undefined" && Notif) ? Notif.dnd : false
+                        onStrokeChanged: requestPaint()
+                        onDndChanged: requestPaint()
+                        onPaint: {
+                            var c = getContext("2d");
+                            c.reset();
+                            c.strokeStyle = stroke;
+                            c.lineWidth = 1.5; c.lineCap = "round"; c.lineJoin = "round";
+                            c.beginPath();
+                            c.moveTo(4.4, 8.4);
+                            c.arc(9, 8.4, 4.6, Math.PI, 2 * Math.PI, false);
+                            c.lineTo(13.6, 11.4);
+                            c.lineTo(15, 13.2);
+                            c.lineTo(3, 13.2);
+                            c.lineTo(4.4, 11.4);
+                            c.closePath();
+                            c.stroke();
+                            c.beginPath(); c.moveTo(9, 2.4); c.lineTo(9, 3.6); c.stroke();
+                            c.beginPath(); c.arc(9, 14.6, 1.5, 0, Math.PI, false); c.stroke();
+                            if (dnd) {
+                                c.strokeStyle = Theme.warn;
+                                c.lineWidth = 1.7;
+                                c.beginPath(); c.moveTo(2.4, 2.6); c.lineTo(15.6, 15.4); c.stroke();
+                            }
+                        }
+                    }
+                }
+                Rectangle {
+                    visible: Notif.count > 0
+                    anchors { top: parent.top; right: parent.right; topMargin: 4; rightMargin: 5 }
+                    width: Math.max(16, badgeText.implicitWidth + 8); height: 16; radius: 8
+                    color: Theme.crimson
+                    border.width: 1.5
+                    border.color: Qt.rgba(0.06, 0.02, 0.03, 0.9)
+                    scale: Notif.count > 0 ? 1 : 0
+                    Behavior on scale { NumberAnimation { duration: 260; easing.type: Easing.OutBack } }
+                    Text {
+                        id: badgeText
+                        anchors.centerIn: parent
+                        text: (typeof Notif !== "undefined" && Notif && Notif.count > 9) ? "9+" : (typeof Notif !== "undefined" && Notif ? String(Notif.count) : "")
+                        color: "white"
+                        font { family: Theme.fontMono; pixelSize: 9; weight: Font.Bold }
                     }
                 }
             }
@@ -363,6 +634,7 @@ PanelWindow {
                 activeColor: Theme.crimson
                 anchors.verticalCenter: parent.verticalCenter
                 onClicked: AgentState.togglePanel()
+                HoverTip { target: agentPill; hovered: bar.compactLayout && agentPill.hovered; text: "Kinetix agent" }
 
                 // Google-assistant listening pulse
                 property real pulse: 0
@@ -378,7 +650,7 @@ PanelWindow {
                 Rectangle {
                     anchors.fill: parent
                     radius: agentPill.radius
-                    opacity: AgentState.status === "working" ? (0.22 + 0.45 * agentPill.pulse) : 0.0
+                    opacity: AgentState.status === "working" ? (0.35 + 0.45 * agentPill.pulse) : (agentPill.active ? 0.35 : (agentPill.hovered ? 0.18 : 0.0))
                     Behavior on opacity { NumberAnimation { duration: Theme.durMed } }
                     gradient: Gradient {
                         orientation: Gradient.Horizontal
@@ -397,32 +669,33 @@ PanelWindow {
                         color: Theme.statusColor(AgentState.status)
                         live: AgentState.status !== "idle"
                     }
-                    Text {
-                        text: "AGENT"
-                        color: agentPill.active ? Theme.crimsonText : (agentPill.hovered ? Theme.text : Theme.textDim)
-                        font { family: Theme.fontMono; pixelSize: Theme.tCaption; letterSpacing: agentPill.active ? 1.8 : 1.5; weight: Font.DemiBold }
+                    Item {
+                        visible: !bar.compactLayout
+                        implicitWidth: agentText.implicitWidth
+                        implicitHeight: agentText.implicitHeight
                         anchors.verticalCenter: parent.verticalCenter
-                        Behavior on color { ColorAnimation { duration: Theme.durFast } }
+
+                        Text {
+                            text: agentText.text
+                            color: Qt.rgba(0, 0, 0, 0.65)
+                            font: agentText.font
+                            anchors.centerIn: parent
+                            anchors.verticalCenterOffset: 1
+                        }
+
+                        Text {
+                            id: agentText
+                            text: "AGENT"
+                            visible: !bar.compactLayout
+                            color: agentPill.active ? Theme.crimsonText : (agentPill.hovered ? Theme.text : Theme.textDim)
+                            font { family: Theme.fontMono; pixelSize: Theme.tCaption; letterSpacing: agentPill.active ? 1.8 : 1.5; weight: Font.DemiBold }
+                            anchors.centerIn: parent
+                            Behavior on color { ColorAnimation { duration: Theme.durFast } }
+                        }
                     }
                 }
             }
         }
-    }
-
-    // Edge-to-edge chromatic laser rail along the bottom boundary:
-    // continuous flowing 4-brand light-pipe with dual orbiting photon glints,
-    // volumetric atmospheric bloom, and status harmonics.
-    FlowBand {
-        anchors.fill: parent
-        mode: "bottomEdge"
-        z: 40
-        amplitude: 0.96
-        periodMs: 10000
-        boosted: AgentState.status === "working"
-        status: AgentState.status
-        hovered: barHover.hovered
-        opacity: bar.enter
-        transform: Translate { y: -bar.height * (1 - bar.enter) }
     }
 
     HoverHandler {

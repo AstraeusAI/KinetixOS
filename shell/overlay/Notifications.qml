@@ -4,15 +4,17 @@ import Quickshell.Wayland
 import "../common"
 import "../components"
 
-// Toast stack for tracked notifications. Lives on the right edge, below the
-// bar. Each toast auto-dismisses; click to dismiss early.
+// Popup toasts: a stack of glass cards sliding in from the right edge, below
+// the bar. Toasts time out on their own (hover pauses) WITHOUT dismissing —
+// they remain in the Notification Center until cleared. Do-not-disturb
+// suppresses them (critical ones still pop). Input is limited to the stack.
 PanelWindow {
     id: win
     required property ShellScreen modelData
     screen: modelData
 
     anchors { top: true; right: true; bottom: true }
-    implicitWidth: 360
+    implicitWidth: 392
     color: "transparent"
     exclusionMode: ExclusionMode.Ignore
 
@@ -20,128 +22,82 @@ PanelWindow {
     WlrLayershell.layer: WlrLayer.Overlay
     WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
 
-    visible: contentCol.notifCount() > 0
+    // linger briefly so the last toast can play its exit animation
+    property bool linger: false
+    Timer { id: lingerTimer; interval: 420; onTriggered: win.linger = false }
+    readonly property int toastCount: (typeof Notif !== "undefined" && Notif && Notif.toasts) ? Notif.toasts.count : 0
+    onToastCountChanged: {
+        if (toastCount === 0) { win.linger = true; lingerTimer.restart(); }
+    }
+    // Opening the Notification Center clears the popups — the same entries
+    // are already listed there.
+    readonly property bool centerOpen: (typeof AgentState !== "undefined" && AgentState) ? AgentState.notifOpen : false
+    onCenterOpenChanged: {
+        if (centerOpen && typeof Notif !== "undefined" && Notif && Notif.toasts) Notif.toasts.clear();
+    }
+    visible: !centerOpen && (toastCount > 0 || linger)
 
-    // Input region == the toast column only: clicks reach toasts/close buttons
-    // and pass through everywhere else. (An empty Region made toasts dead.)
-    mask: Region { item: contentCol }
+    mask: Region { item: stack }
 
+    // A Column (not a ListView): positioners re-flow the moment any card's
+    // height changes, so cards that settle after creation can never overlap.
+    // Exit animations run in the delegate, which then finalizes the removal.
     Column {
-        id: contentCol
-        anchors { top: parent.top; topMargin: 64; right: parent.right; rightMargin: 14 }
-        spacing: Theme.s2
-        width: 340
+        id: stack
+        anchors { top: parent.top; topMargin: 66; right: parent.right; rightMargin: 16 }
+        width: 360
+        spacing: 0
 
-        // ObjectModel exposes count/get; plain arrays expose length/[i] —
-        // support both so the header works regardless of backend shape.
-        function notifCount() {
-            var m = Notif.tracked;
-            if (!m) return 0;
-            return m.count !== undefined ? m.count : (m.length || 0);
-        }
-        function dismissAll() {
-            var m = Notif.tracked;
-            if (!m) return;
-            var n = contentCol.notifCount();
-            for (var i = n - 1; i >= 0; i--) {
-                var item = m.get ? m.get(i) : m[i];
-                if (item) item.dismiss();
+        add: Transition {
+            ParallelAnimation {
+                NumberAnimation { property: "x"; from: 420; duration: 420; easing.type: Easing.OutBack; easing.overshoot: 0.9 }
+                NumberAnimation { property: "opacity"; from: 0; to: 1; duration: 260 }
             }
         }
-
-        // ── dismiss-all header + exit ──
-        Row {
-            width: parent.width
-            visible: contentCol.notifCount() > 0
-            spacing: Theme.s2
-            Text {
-                text: contentCol.notifCount() + " NOTIFICATION" + (contentCol.notifCount() === 1 ? "" : "S")
-                color: Theme.textFaint
-                font { family: Theme.fontMono; pixelSize: Theme.tMicro; letterSpacing: 1.4; weight: Font.DemiBold }
-                anchors.verticalCenter: parent.verticalCenter
-            }
-            Item { width: Math.max(0, parent.width - x - clearAll.width - notifClose.width - parent.spacing * 2); height: 1 }
-            PillButton {
-                id: clearAll
-                anchors.verticalCenter: parent.verticalCenter
-                implicitWidth: 76; implicitHeight: 24
-                text: "Clear all"
-                onClicked: contentCol.dismissAll()
-            }
-            CloseButton {
-                id: notifClose
-                box: 24
-                anchors.verticalCenter: parent.verticalCenter
-                onClicked: contentCol.dismissAll()
-            }
+        move: Transition {
+            NumberAnimation { properties: "y"; duration: 320; easing.type: Easing.OutCubic }
         }
 
         Repeater {
-            model: Notif.tracked
-            delegate: GlassPanel {
-                id: notifCard
-                required property var modelData
-                readonly property var item: modelData
-                width: 340
-                height: col.implicitHeight + Theme.s4 * 2
-                radius: Theme.rM
-                level: 2
-                interactive: true
+            model: Notif.toasts
+            delegate: Item {
+                id: tw
+                required property var model
+                width: stack.width
+                height: (leaving ? shrink : 1) * (tc.height + 12)
+                clip: false
+                property real shrink: 1
+                readonly property bool leaving: model.leaving
 
-                Column {
-                    id: col
-                    anchors { fill: parent; margins: Theme.s4 }
-                    spacing: Theme.s1 + 1
-
-                    Row {
-                        width: parent.width
-                        Text {
-                            text: (notifCard.item && notifCard.item.appName) ? notifCard.item.appName : "Notification"
-                            color: Theme.accent2
-                            font { family: Theme.fontMono; pixelSize: Theme.tCaption; letterSpacing: 1; weight: Font.DemiBold }
-                        }
-                        Item { width: parent.width - x - closeW.width; height: 1 }
-                        Text {
-                            id: closeW
-                            text: "✕"
-                            color: Theme.textFaint
-                            font.pixelSize: 10
-                            MouseArea {
-                                anchors.fill: parent; anchors.margins: -6
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: {
-                                    if (notifCard.item && notifCard.item.dismiss)
-                                        notifCard.item.dismiss();
-                                }
-                            }
-                        }
+                onLeavingChanged: if (leaving) exitAnim.start()
+                ParallelAnimation {
+                    id: exitAnim
+                    NumberAnimation { target: tc; property: "x"; to: 420; duration: 300; easing.type: Easing.InCubic }
+                    NumberAnimation { target: tc; property: "opacity"; to: 0; duration: 260 }
+                    SequentialAnimation {
+                        PauseAnimation { duration: 140 }
+                        NumberAnimation { target: tw; property: "shrink"; to: 0; duration: 200; easing.type: Easing.InOutQuad }
                     }
-                    Text {
-                        width: parent.width
-                        text: (notifCard.item && notifCard.item.summary) ? notifCard.item.summary : ""
-                        color: Theme.text
-                        font { family: Theme.fontUi; pixelSize: Theme.tBody; weight: Font.DemiBold }
-                        wrapMode: Text.WordWrap
-                    }
-                    Text {
-                        width: parent.width
-                        visible: !!(notifCard.item && notifCard.item.body)
-                        text: (notifCard.item && notifCard.item.body) ? notifCard.item.body : ""
-                        color: Theme.textDim
-                        font { family: Theme.fontUi; pixelSize: Theme.tBody }
-                        wrapMode: Text.WordWrap
-                        maximumLineCount: 4
-                        elide: Text.ElideRight
-                    }
+                    onFinished: Notif.finalizeToast(tw.model.nid)
                 }
 
-                Timer {
-                    interval: 5000
-                    running: true
-                    onTriggered: {
-                        if (notifCard.item && notifCard.item.dismiss)
-                            notifCard.item.dismiss();
-                    }
+                NotifCard {
+                    id: tc
+                    width: parent.width
+                    nid: tw.model.nid
+                    appName: tw.model.appName
+                    summary: tw.model.summary
+                    body: tw.model.body
+                    icon: tw.model.icon
+                    image: tw.model.image
+                    urgency: tw.model.urgency
+                    ts: tw.model.ts
+                    actionsJson: tw.model.actionsJson
+                    timeout: tw.model.timeout
+                    kind: tw.model.kind
+                    repeat: tw.model.repeat
+                    saved: tw.model.saved
+                    toast: true
                 }
             }
         }

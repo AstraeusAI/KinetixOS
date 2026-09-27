@@ -18,7 +18,7 @@ from unittest import mock
 import support  # noqa: F401
 
 import argusd
-from lib import kwin, tools
+from lib import kwin, tools, workspace
 
 
 class DummyContext:
@@ -27,7 +27,12 @@ class DummyContext:
         self.grants = grants if grants is not None else {"input": True, "screen": True}
         self.db = None
         self.session = "test-comp-use"
-        self.workspace = None
+        # A real Workspace, rooted at the throwaway tree, because the file
+        # tools resolve their path arguments through it and that containment
+        # is the enforcement point — a context with workspace=None cannot
+        # exercise any tool that takes a path, and would silently skip the
+        # very check the tool exists to perform.
+        self.workspace = workspace.Workspace(data_dir)
         self.policy = None
         self.checkpoints = None
         self.todos = []

@@ -353,5 +353,78 @@ class ContextTests(unittest.TestCase):
         self.assertIn("race condition", joined)
 
 
+class FinishGateNudgeTests(unittest.TestCase):
+    """A code task that reports done without a mechanical review gets sent back.
+
+    Observed live: a complete-looking deliverable (retry decorator, 7 passing
+    tests, clean lint) reported completion without ever calling
+    verify_deliverable, and shipped two defects that tool exists to catch — a
+    headline async feature with zero tests exercising it, and a missing
+    real-world caveat on a well-known pattern. The system prompt asked for the
+    call twice. A prompt is not a mechanism.
+    """
+
+    def flags(self, **over):
+        # The real bag, not a hand-built copy: a literal here silently rots the
+        # next time a flag is added, which is how this test class first failed.
+        st = argusd._loop._flag_bag()
+        st.update(over)
+        return st
+
+    def setUp(self):
+        self.db = argusd.connect()
+        argusd.event(self.db, "gate-test", "user", {"text": "go"})
+
+    def nudge(self, st, step=5, max_steps=64, todos=None):
+        return argusd._loop._finish_nudges(
+            self.db, "gate-test", {"content": "done."}, todos or [], st, step, max_steps
+        )
+
+    def test_a_mutated_code_task_with_no_review_is_sent_back(self):
+        out = self.nudge(
+            self.flags(mutated_any=True, mutated_testable=True, ran_tests=True)
+        )
+        self.assertIsNotNone(out)
+        self.assertIn("verify_deliverable", out[0])
+
+    def test_the_nudge_fires_even_when_tests_never_ran(self):
+        # The tests nudge is more urgent, so it goes first — but the gate must
+        # still be reachable in the same task rather than starved by it.
+        st = self.flags(mutated_any=True, mutated_testable=True)
+        first = self.nudge(st)
+        self.assertIn("run_tests", first[0])
+        second = self.nudge(st)
+        self.assertIn("verify_deliverable", second[0])
+
+    def test_running_the_gate_satisfies_it(self):
+        st = self.flags(mutated_any=True, mutated_testable=True, ran_tests=True,
+                        ran_gate=True)
+        self.assertIsNone(self.nudge(st))
+
+    def test_it_is_one_shot(self):
+        st = self.flags(mutated_any=True, mutated_testable=True, ran_tests=True)
+        self.assertIsNotNone(self.nudge(st))
+        self.assertIsNone(self.nudge(st))
+
+    def test_a_task_that_mutated_nothing_is_not_dragged_through_it(self):
+        # Config/docs-only work gains nothing from a static-analysis gate, and
+        # the nudge would just burn step budget arguing about it.
+        self.assertIsNone(self.nudge(self.flags(mutated_any=False)))
+
+    def test_a_failing_gate_still_counts_as_having_ran(self):
+        # The nudge's job is that the check happened. Whether the model then
+        # fixes what it found is a different problem, and reporting it is
+        # verify_deliverable's own job.
+        st = self.flags(mutated_any=True, mutated_testable=True, ran_tests=True,
+                        ran_gate=True)
+        self.assertIsNone(self.nudge(st))
+
+    def test_it_does_not_strand_a_task_at_the_step_ceiling(self):
+        # Near the budget the nudge is suppressed, so a task can always still
+        # produce a report.
+        st = self.flags(mutated_any=True, mutated_testable=True, ran_tests=True)
+        self.assertIsNone(self.nudge(st, step=63, max_steps=64))
+
+
 if __name__ == "__main__":
     unittest.main()

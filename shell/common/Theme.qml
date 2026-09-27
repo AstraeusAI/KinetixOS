@@ -1,8 +1,10 @@
 pragma Singleton
 import QtQuick
+import Quickshell
 
 // Argus design tokens v2 — see docs/02-design-system.md
 QtObject {
+    id: theme
     // ── palette ───────────────────────────────────────────
     readonly property color bg: "#07080C"
     readonly property color bgElevated: "#0C0E15"
@@ -34,16 +36,15 @@ QtObject {
     readonly property color warn: "#FFB454"
     readonly property color danger: "#FF6B6B"
 
-    // agent identity — the deep ominous crimson family (docs/02, "Agent Panel
-    // palette"). Single source of truth: the Agent Panel aliases these as its
-    // pAccent* tokens, and the bar's agent pill uses them directly. Every
-    // other surface keeps iris/teal.
-    readonly property color crimson: "#B3283A"
-    readonly property color crimsonText: "#D6556A"
-    readonly property color ember: "#E8752E"
+    // Shared Kinetix crimson family for the agent and main bar. The legacy
+    // accent/accent2 tokens remain available to semantic surfaces that still
+    // use them; bar-specific fills stay isolated in the bar* tokens below.
+    readonly property color crimson: "#E01A3C"
+    readonly property color crimsonText: "#FF4D6D"
+    readonly property color ember: "#FF7324"
     readonly property color gilded: "#C98F2E"
     readonly property color alarm: "#FF2E43"
-    readonly property color glowDeep: "#2A070C"
+    readonly property color glowDeep: "#3D0711"
 
     // main bar identity — the bar's own glass, panel-wide, now carries the
     // same crimson family (docs/02, "Main bar palette"), instead of the
@@ -53,11 +54,14 @@ QtObject {
     // future change to one palette can never silently bleed into the other.
     // Workspace dots, the status orb, and other semantic state colors are
     // untouched — this is chrome, not signal.
-    readonly property color barBase: Qt.rgba(0.094, 0.020, 0.027, 0.98)
-    readonly property color barBaseHigh: Qt.rgba(0.150, 0.032, 0.043, 0.97)
-    readonly property color barStroke: alpha(crimson, 0.22)
-    readonly property color barStrokeStrong: alpha(alarm, 0.40)
-    readonly property color barHoverGlow: alpha(crimson, 0.16)
+    // main bar glassmorphism identity — translucent dark oxblood glass that
+    // allows KWin compositor blur to diffuse whatever is behind the bar,
+    // combined with multi-layer specular chamfers and volumetric depth.
+    readonly property color barBase: Qt.rgba(0.052, 0.025, 0.034, 0.58)
+    readonly property color barBaseHigh: Qt.rgba(0.115, 0.045, 0.058, 0.48)
+    readonly property color barHoverGlow: alpha(crimson, 0.20)
+    readonly property color barStroke: alpha(crimson, 0.26)
+    readonly property color barStrokeStrong: alpha(alarm, 0.44)
 
     // ── shape & space ─────────────────────────────────────
     readonly property int rXS: 6
@@ -96,6 +100,36 @@ QtObject {
     readonly property int easeSoft: Easing.OutCubic
     readonly property int easeSpring: Easing.OutBack
 
+    // ── motion preference ──────────────────────────────────
+    // Whether decorative and ambient motion is allowed at all. QML has no
+    // prefers-reduced-motion media query, so the shell reads the setting the
+    // way every other Linux desktop surface does — an environment variable,
+    // exported by the session or written by the installer, following the same
+    // pattern as InstallerState's KINETIX_INSTALLER_SIMULATE.
+    //
+    // Default is motion ON: this is an opt-out for people who need it, not an
+    // opt-in nobody notices. Nothing here is load-bearing for comprehension —
+    // every place the preference removes motion has to keep the *information*
+    // that motion was carrying, which is why it is paired with `ms` and
+    // `ambient` rather than a blanket "set every duration to 0".
+    readonly property bool reduceMotion: {
+        var v = (Quickshell.env("KINETIX_REDUCE_MOTION") || "").toLowerCase();
+        return v === "1" || v === "true" || v === "yes" || v === "on";
+    }
+    // Ambient loops — the heartbeat, shimmer sweeps, continuous drift — stop
+    // rather than merely shortening. A 1s pulse repeating forever is the exact
+    // thing the setting exists to suppress, so this gates `running:` and not
+    // `duration:`.
+    readonly property bool ambient: !reduceMotion
+    // Duration helper for finite transitions. Collapses to ~instant rather
+    // than rescaling: a 400ms fade shortened to 90ms is still a fade, so the
+    // value has to be *changed* when motion is reduced, not made smaller.
+    // 1ms rather than 0 because a zero-duration QPropertyAnimation is a
+    // degenerate case whose "apply the end value immediately" behaviour is not
+    // something to hang a whole reveal on; 1ms is imperceptible and
+    // unconditionally applies the target.
+    function ms(n) { return reduceMotion ? 1 : n; }
+
     // ── elevation ─────────────────────────────────────────
     // soft multi-layer shadow spec: {dy: vertical offset, a: alpha, grow: outward growth}
     function shadowFor(level) {
@@ -118,6 +152,24 @@ QtObject {
     // gradient helpers
     function alpha(c, a) { return Qt.rgba(c.r, c.g, c.b, a); }
 
+    // Accent colour for an app icon from ColorQuantizer.colors: the most
+    // vivid mid-lightness colour, lifted so it reads on dark glass; crimson
+    // when the icon is monochrome or not loaded yet.
+    function appAccent(colors) {
+        var best = crimsonText, bestScore = 0.16;
+        var cs = colors || [];
+        for (var i = 0; i < cs.length; i++) {
+            var c = cs[i];
+            var mx = Math.max(c.r, c.g, c.b), mn = Math.min(c.r, c.g, c.b);
+            var l = (mx + mn) / 2;
+            var sat = mx === mn ? 0 : (mx - mn) / (1 - Math.abs(2 * l - 1));
+            var score = sat * (1 - Math.abs(l - 0.56) * 1.6);
+            if (score > bestScore) { bestScore = score; best = c; }
+        }
+        return Qt.hsla(best.hslHue, Math.min(1, best.hslSaturation * 1.05),
+                       Math.max(0.52, Math.min(0.68, best.hslLightness)), 1);
+    }
+
     function statusColor(status) {
         switch (status) {
         case "working": return accent;
@@ -130,15 +182,14 @@ QtObject {
     // ── Global Synchronized Heartbeat Clock ──────────────────────────────
     // A single, shared oscillator driving all glowing indicator beacons,
     // pips, and subtle status pulses across the desktop.
-    // Consolidating independent SequentialAnimations into this single driver
-    // eliminates dozens of timer wakeups per second.
+    // A modest 20 Hz timer is enough for decorative pulses/spinners and
+    // avoids driving the whole shell's render loop at display refresh rate.
     property real heartbeatPhase: 0
     readonly property real heartbeatSin: 0.5 + 0.5 * Math.sin(heartbeatPhase * 2 * Math.PI)
-    NumberAnimation on heartbeatPhase {
-        from: 0
-        to: 1
-        duration: 1800
-        loops: Animation.Infinite
+    property Timer heartbeatTimer: Timer {
+        interval: 50
         running: true
+        repeat: true
+        onTriggered: theme.heartbeatPhase = (theme.heartbeatPhase + interval / 1800) % 1
     }
 }

@@ -168,6 +168,7 @@ PanelWindow {
     }
 
     // ── data ──────────────────────────────────────────────
+    readonly property bool widgetSystemEnabled: Quickshell.env("KINETIX_ENABLE_WIDGETS") === "1"
     property var commands: [
         { "name": "Open app launcher", "sub": "browse all applications", "glyph": "▦", "agent": false, "exec": "launcher" },
         { "name": "New agent task", "sub": "open the agent panel", "glyph": "◉", "agent": true, "exec": "agent" },
@@ -183,6 +184,7 @@ PanelWindow {
         var i;
         for (i = 0; i < commands.length; i++) {
             var c = commands[i];
+            if (!win.widgetSystemEnabled && (c.exec === "widgets" || c.exec === "widgetedit")) continue;
             if (q === "" || c.name.toLowerCase().indexOf(q) >= 0)
                 out.push(c);
         }
@@ -203,8 +205,8 @@ PanelWindow {
         else if (item.exec === "launcher") { AgentState.launcherOpen = true; }
         else if (item.exec === "agent") { AgentState.panelOpen = true; }
         else if (item.exec === "cu") { AgentState.computerUse = !AgentState.computerUse; }
-        else if (item.exec === "widgets") { WidgetStore.catalogOpen = true; }
-        else if (item.exec === "widgetedit") { WidgetStore.editMode = !WidgetStore.editMode; }
+        else if (item.exec === "widgets" && widgetSystemEnabled) { WidgetStore.catalogOpen = true; }
+        else if (item.exec === "widgetedit" && widgetSystemEnabled) { WidgetStore.editMode = !WidgetStore.editMode; }
         else if (item.exec === "panic") { ArgusBridge.panic(); }
         AgentState.paletteOpen = false;
         search.text = "";

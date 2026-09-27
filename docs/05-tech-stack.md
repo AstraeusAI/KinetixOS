@@ -12,6 +12,7 @@ machine (2026-09): Plasma **6.7.5**, Qt **6.11.2**, Quickshell **0.3.1**.
 | `ttf-jetbrains-mono` | data/log typeface |
 | `qt6-*` (via Plasma) | QML engine, `QtQuick.Effects` for shadows/blur |
 | `qdbus6` / `qt6-tools` | KWin virtual-desktop + window APIs |
+| `ghostty` | quick-terminal drop-down (`shell/terminal/`) — a real GTK/Wayland surface, not QML; see that directory's `ghostty.conf` |
 
 ## Session layer
 
@@ -45,7 +46,7 @@ machine (2026-09): Plasma **6.7.5**, Qt **6.11.2**, Quickshell **0.3.1**.
 ## Install set for the current scaffold
 
 ```sh
-sudo pacman -S --needed quickshell inter-font ttf-jetbrains-mono qdbus6
+sudo pacman -S --needed quickshell inter-font ttf-jetbrains-mono qdbus6 ghostty
 ```
 
 ## Shell internals
@@ -60,6 +61,7 @@ sudo pacman -S --needed quickshell inter-font ttf-jetbrains-mono qdbus6
 | `Quickshell.Services.Notifications` | notification server |
 | `scripts/argus-sysmon.sh` | streams CPU/RAM/GPU/net/disk once per second |
 | `scripts/argus-appscan.sh` | enumerates `.desktop` apps + resolves icon paths |
+| `shell/terminal/toggle.sh` | shows/hides Ghostty's quick terminal (launches it with `shell/terminal/ghostty.conf` on first use); prints `open`/`closed` on stdout so `AgentState.terminalOpen` (and the bar button's active state) track its real on-screen visibility |
 
 ## LLM providers
 

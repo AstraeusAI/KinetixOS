@@ -1,0 +1,7 @@
+[Desktop Entry]
+Name=KinetixOS
+Comment=Kinetix Quickshell desktop on KWin
+Exec=/usr/bin/kinetix-session
+TryExec=/usr/bin/kinetix-session
+Type=Application
+DesktopNames=Kinetix;

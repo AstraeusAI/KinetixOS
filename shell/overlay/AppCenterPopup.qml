@@ -28,14 +28,22 @@ PanelWindow {
         onActivated: AgentState.appCenterOpen = false
     }
 
+    Shortcut {
+        sequence: "Ctrl+F"
+        context: Qt.WindowShortcut
+        enabled: AgentState.appCenterOpen
+        onActivated: {
+            searchInput.forceActiveFocus();
+            searchInput.selectAll();
+        }
+    }
+
     WlrLayershell.namespace: "argus:appcenter"
     WlrLayershell.layer: WlrLayer.Overlay
     WlrLayershell.keyboardFocus: AgentState.appCenterOpen
                                  ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
 
     visible: AgentState.appCenterOpen || pop.popProgress > 0.01
-
-    Keys.onEscapePressed: AgentState.appCenterOpen = false
 
     // Dismiss when clicking outside the popup
     MouseArea {
@@ -61,8 +69,9 @@ PanelWindow {
         radius: Theme.rXL
         level: 3
         clipContent: true
+        baseColor: "#0F0709"   // deep ominous maroon base — matches the agent panel
 
-        readonly property color cardBg: Qt.rgba(0.07, 0.09, 0.14, 0.72)
+        readonly property color cardBg: Qt.rgba(0.09, 0.043, 0.05, 0.75)
         readonly property color cardBorder: Qt.rgba(1, 1, 1, 0.08)
 
         property real popProgress: AgentState.appCenterOpen ? 1.0 : 0.0
@@ -72,6 +81,33 @@ PanelWindow {
         Behavior on popProgress { NumberAnimation { duration: Theme.durMed; easing.type: Easing.OutQuint } }
 
         Keys.onEscapePressed: AgentState.appCenterOpen = false
+
+        // Volumetric atmospheric crimson depth wash
+        Rectangle {
+            anchors.fill: parent
+            radius: pop.radius
+            gradient: Gradient {
+                GradientStop { position: 0.0; color: Qt.rgba(0.92, 0.12, 0.20, 0.06) }
+                GradientStop { position: 0.35; color: "transparent" }
+                GradientStop { position: 0.75; color: "transparent" }
+                GradientStop { position: 1.0; color: Qt.rgba(0.40, 0.04, 0.08, 0.08) }
+            }
+        }
+
+        // Specular grazing highlight along top edge
+        Rectangle {
+            anchors { top: parent.top; left: parent.left; right: parent.right }
+            height: 1.5
+            radius: pop.radius
+            gradient: Gradient {
+                orientation: Gradient.Horizontal
+                GradientStop { position: 0.0; color: "transparent" }
+                GradientStop { position: 0.20; color: Qt.rgba(1, 1, 1, 0.22) }
+                GradientStop { position: 0.50; color: Theme.alpha(Theme.crimson, 0.65) }
+                GradientStop { position: 0.80; color: Qt.rgba(1, 1, 1, 0.18) }
+                GradientStop { position: 1.0; color: "transparent" }
+            }
+        }
 
         // Absorb clicks inside
         MouseArea {
@@ -96,15 +132,25 @@ PanelWindow {
                     anchors.verticalCenter: parent.verticalCenter
                     spacing: Theme.s3
 
-                    // Glowing Icon Monogram
+                    // Glowing Icon Monogram with synchronized heartbeat beacon
                     Rectangle {
                         width: 38
                         height: 38
                         radius: 11
-                        color: Theme.alpha(Theme.accent, 0.16)
+                        color: Theme.alpha(Theme.crimson, 0.16 + 0.08 * Theme.heartbeatSin)
                         border.width: 1
-                        border.color: Theme.alpha(Theme.accent, 0.42)
+                        border.color: Theme.alpha(Theme.crimson, 0.42 + 0.25 * Theme.heartbeatSin)
                         anchors.verticalCenter: parent.verticalCenter
+
+                        // Subtle pulsing halo
+                        Rectangle {
+                            anchors.fill: parent
+                            anchors.margins: -2
+                            radius: 13
+                            color: "transparent"
+                            border.width: 1
+                            border.color: Theme.alpha(Theme.crimson, 0.18 * (Theme.heartbeatSin + 1.0) * 0.5)
+                        }
 
                         Rectangle {
                             anchors.centerIn: parent
@@ -117,7 +163,7 @@ PanelWindow {
                         Text {
                             anchors.centerIn: parent
                             text: "❖"
-                            color: Theme.accent
+                            color: Theme.crimsonText
                             font.pixelSize: 18
                         }
                     }
@@ -126,14 +172,37 @@ PanelWindow {
                         anchors.verticalCenter: parent.verticalCenter
                         spacing: 2
 
-                        Text {
-                            text: "KINETIX APP CENTER"
-                            color: Theme.text
-                            font {
-                                family: Theme.fontMono
-                                pixelSize: Theme.tBody
-                                weight: Font.Bold
-                                letterSpacing: 1.4
+                        Row {
+                            spacing: Theme.s2
+
+                            Text {
+                                text: "KINETIX APP CENTER"
+                                color: Theme.text
+                                font {
+                                    family: Theme.fontMono
+                                    pixelSize: Theme.tBody
+                                    weight: Font.Bold
+                                    letterSpacing: 1.4
+                                }
+                            }
+
+                            // Active Engine count pill badge
+                            Rectangle {
+                                implicitHeight: 18
+                                implicitWidth: engPillTxt.implicitWidth + 10
+                                radius: Theme.rPill
+                                color: Theme.alpha(Theme.crimson, 0.16)
+                                border.width: 1
+                                border.color: Theme.alpha(Theme.crimson, 0.40)
+                                anchors.verticalCenter: parent.verticalCenter
+
+                                Text {
+                                    id: engPillTxt
+                                    anchors.centerIn: parent
+                                    text: AppCenterState.installedEnginesCount + "/" + AppCenterState.totalEnginesCount + " ENGINES"
+                                    color: Theme.crimsonText
+                                    font { family: Theme.fontMono; pixelSize: 8; weight: Font.Bold }
+                                }
                             }
                         }
 
@@ -145,6 +214,22 @@ PanelWindow {
                                 pixelSize: Theme.tCaption
                             }
                         }
+                    }
+                }
+
+                // Crimson identity keyline — the panel's signature edge,
+                // mirrored from the agent panel's laser keyline (static, no
+                // animation: the bar's laser rail stays the only animated one)
+                Rectangle {
+                    anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
+                    height: 1
+                    gradient: Gradient {
+                        orientation: Gradient.Horizontal
+                        GradientStop { position: 0.0; color: "transparent" }
+                        GradientStop { position: 0.18; color: Theme.alpha(Theme.crimson, 0.55) }
+                        GradientStop { position: 0.5;  color: Theme.crimson }
+                        GradientStop { position: 0.82; color: Theme.alpha(Theme.crimson, 0.55) }
+                        GradientStop { position: 1.0; color: "transparent" }
                     }
                 }
 
@@ -166,16 +251,16 @@ PanelWindow {
                         readonly property bool hovered: updateHit.containsMouse
 
                         color: isUpdating
-                               ? Theme.alpha(Theme.warn, 0.25)
+                               ? Theme.alpha(Theme.gilded, 0.25)
                                : hasUpdates
-                               ? (hovered ? Theme.alpha(Theme.warn, 0.32) : Theme.alpha(Theme.warn, 0.18))
-                               : (hovered ? Theme.alpha(Theme.accent2, 0.25) : Theme.alpha(Theme.accent2, 0.12))
+                               ? (hovered ? Theme.alpha(Theme.gilded, 0.32) : Theme.alpha(Theme.gilded, 0.18))
+                               : (hovered ? Theme.alpha(Theme.ember, 0.25) : Theme.alpha(Theme.ember, 0.12))
                         border.width: 1
                         border.color: isUpdating
-                                     ? Theme.warn
+                                     ? Theme.gilded
                                      : hasUpdates
-                                     ? (hovered ? Theme.warn : Theme.alpha(Theme.warn, 0.50 + 0.30 * Theme.heartbeatSin))
-                                     : (hovered ? Theme.accent2 : Theme.alpha(Theme.accent2, 0.35))
+                                     ? (hovered ? Theme.gilded : Theme.alpha(Theme.gilded, 0.50 + 0.30 * Theme.heartbeatSin))
+                                     : (hovered ? Theme.ember : Theme.alpha(Theme.ember, 0.35))
                         scale: updateHit.pressed ? 0.95 : (hovered ? 1.03 : 1.0)
 
                         Behavior on color { ColorAnimation { duration: Theme.durFast } }
@@ -199,7 +284,7 @@ PanelWindow {
 
                             Text {
                                 text: updateAllBtn.isUpdating ? "◐" : (updateAllBtn.hasUpdates ? "⇧" : "✓")
-                                color: updateAllBtn.hasUpdates || updateAllBtn.isUpdating ? Theme.warn : Theme.accent2
+                                color: updateAllBtn.hasUpdates || updateAllBtn.isUpdating ? Theme.gilded : Theme.ember
                                 font { family: Theme.fontMono; pixelSize: 11; weight: Font.Bold }
                                 rotation: updateAllBtn.isUpdating ? (Theme.heartbeatPhase * 360) : 0
                             }
@@ -210,7 +295,7 @@ PanelWindow {
                                       : (updateAllBtn.hasUpdates
                                          ? ("Update All (" + AppCenterState.updatesCount + ")")
                                          : "Up to Date")
-                                color: updateAllBtn.hasUpdates || updateAllBtn.isUpdating ? Theme.warn : Theme.accent2
+                                color: updateAllBtn.hasUpdates || updateAllBtn.isUpdating ? Theme.gilded : Theme.ember
                                 font { family: Theme.fontMono; pixelSize: Theme.tMicro; weight: Font.DemiBold }
                             }
                         }
@@ -260,9 +345,11 @@ PanelWindow {
                 width: parent.width
                 height: 42
                 radius: Theme.rM
-                color: Theme.surfaceLow
+                // Warm well that deepens toward crimson on focus
+                color: searchInput.activeFocus ? Theme.alpha(Theme.crimson, 0.10) : Theme.surfaceLow
                 border.width: 1
-                border.color: searchInput.activeFocus ? Theme.accent : Theme.stroke
+                border.color: searchInput.activeFocus ? Theme.crimson : Theme.stroke
+                Behavior on color { ColorAnimation { duration: Theme.durFast } }
                 Behavior on border.color { ColorAnimation { duration: Theme.durFast } }
 
                 Row {
@@ -275,7 +362,7 @@ PanelWindow {
 
                     Text {
                         text: "🔍"
-                        color: searchInput.activeFocus ? Theme.accent : Theme.textDim
+                        color: searchInput.activeFocus ? Theme.crimsonText : Theme.textDim
                         font.pixelSize: 13
                         anchors.verticalCenter: parent.verticalCenter
                     }
@@ -374,7 +461,7 @@ PanelWindow {
                         model: [
                             { id: "discover", label: "Discover", icon: "✦" },
                             { id: "updates", label: "Updates (" + AppCenterState.updatesCount + ")", icon: "⇧" },
-                            { id: "engines", label: "Package Engines", icon: "⚙" }
+                            { id: "engines", label: "Package Engines (" + AppCenterState.installedEnginesCount + "/" + AppCenterState.totalEnginesCount + ")", icon: "⚙" }
                         ]
 
                         delegate: Rectangle {
@@ -387,11 +474,11 @@ PanelWindow {
                             radius: Theme.rPill
 
                             color: isSelected
-                                   ? Theme.alpha(Theme.accent, 0.22)
+                                   ? Theme.alpha(Theme.crimson, 0.22)
                                    : (hovered ? Theme.surfaceHigh : "transparent")
                             border.width: 1
                             border.color: isSelected
-                                         ? Theme.accent
+                                         ? Theme.crimson
                                          : (hovered ? Theme.strokeStrong : "transparent")
                             scale: tabHit.pressed ? 0.95 : 1.0
 
@@ -418,7 +505,7 @@ PanelWindow {
 
                                 Text {
                                     text: modelData.icon
-                                    color: tabBtn.isSelected ? Theme.accent : Theme.textDim
+                                    color: tabBtn.isSelected ? Theme.crimsonText : Theme.textDim
                                     font.pixelSize: 11
                                 }
 
@@ -452,10 +539,10 @@ PanelWindow {
 
                     Repeater {
                         model: [
-                            { id: "all", label: "All", color: Theme.accent },
-                            { id: "aur", label: "AUR", color: Theme.accent },
-                            { id: "arch", label: "Arch", color: Theme.accent2 },
-                            { id: "flatpak", label: "Flathub", color: "#10B981" }
+                            { id: "all", label: "All", color: Theme.crimsonText },
+                            { id: "aur", label: "AUR", color: Theme.alarm },
+                            { id: "arch", label: "Arch", color: Theme.ember },
+                            { id: "flatpak", label: "Flathub", color: Theme.gilded }
                         ]
 
                         delegate: Rectangle {
@@ -561,11 +648,11 @@ PanelWindow {
                                             radius: Theme.rPill
 
                                             color: isSelected
-                                                   ? Theme.alpha(Theme.accent, 0.22)
+                                                   ? Theme.alpha(Theme.crimson, 0.22)
                                                    : (hovered ? Theme.surfaceHigh : Theme.surfaceLow)
                                             border.width: 1
                                             border.color: isSelected
-                                                         ? Theme.accent
+                                                         ? Theme.crimson
                                                          : (hovered ? Theme.strokeStrong : Theme.stroke)
                                             scale: chipHit.pressed ? 0.94 : (hovered ? 1.02 : 1.0)
 
@@ -588,7 +675,7 @@ PanelWindow {
 
                                                 Text {
                                                     text: modelData.icon
-                                                    color: chipBtn.isSelected ? Theme.accent : Theme.textFaint
+                                                    color: chipBtn.isSelected ? Theme.crimsonText : Theme.textFaint
                                                     font.pixelSize: 10
                                                 }
 
@@ -608,7 +695,7 @@ PanelWindow {
                                                     implicitHeight: 14
                                                     implicitWidth: cntTxt.implicitWidth + 6
                                                     radius: 7
-                                                    color: chipBtn.isSelected ? Theme.alpha(Theme.accent, 0.35) : Theme.surfaceHigh
+                                                    color: chipBtn.isSelected ? Theme.alpha(Theme.crimson, 0.35) : Theme.surfaceHigh
                                                     anchors.verticalCenter: parent.verticalCenter
                                                     Text {
                                                         id: cntTxt
@@ -623,6 +710,32 @@ PanelWindow {
                                     }
                                 }
                             }
+
+                            // Left overflow fade mask
+                            Rectangle {
+                                anchors { left: parent.left; top: parent.top; bottom: parent.bottom }
+                                width: 22
+                                visible: catFlick.contentX > 2
+                                gradient: Gradient {
+                                    orientation: Gradient.Horizontal
+                                    GradientStop { position: 0.0; color: pop.cardBg }
+                                    GradientStop { position: 1.0; color: "transparent" }
+                                }
+                                z: 2
+                            }
+
+                            // Right overflow fade mask
+                            Rectangle {
+                                anchors { right: parent.right; top: parent.top; bottom: parent.bottom }
+                                width: 26
+                                visible: catFlick.contentX < (catFlick.contentWidth - catFlick.width - 2)
+                                gradient: Gradient {
+                                    orientation: Gradient.Horizontal
+                                    GradientStop { position: 0.0; color: "transparent" }
+                                    GradientStop { position: 1.0; color: pop.cardBg }
+                                }
+                                z: 2
+                            }
                         }
 
                         // Featured Apps List
@@ -633,6 +746,8 @@ PanelWindow {
                             spacing: Theme.s2
                             boundsBehavior: Flickable.StopAtBounds
                             clip: true
+                            reuseItems: true
+                            cacheBuffer: 200
                             model: AppCenterState.filteredFeaturedApps
 
                             delegate: AppCard {
@@ -663,14 +778,14 @@ PanelWindow {
                         Rectangle {
                             anchors.horizontalCenter: parent.horizontalCenter
                             width: 44; height: 44; radius: 22
-                            color: Theme.alpha(Theme.accent, 0.16)
+                            color: Theme.alpha(Theme.crimson, 0.16)
                             border.width: 1
-                            border.color: Theme.alpha(Theme.accent, 0.35)
+                            border.color: Theme.alpha(Theme.crimson, 0.35)
 
                             Text {
                                 anchors.centerIn: parent
                                 text: "◐"
-                                color: Theme.accent
+                                color: Theme.crimsonText
                                 font.pixelSize: 22
                                 rotation: Theme.heartbeatPhase * 360
                             }
@@ -775,6 +890,8 @@ PanelWindow {
                             spacing: Theme.s2
                             boundsBehavior: Flickable.StopAtBounds
                             clip: true
+                            reuseItems: true
+                            cacheBuffer: 200
                             model: AppCenterState.searchResults
 
                             delegate: AppCard {
@@ -805,14 +922,14 @@ PanelWindow {
                         Rectangle {
                             anchors.horizontalCenter: parent.horizontalCenter
                             width: 64; height: 64; radius: 32
-                            color: Theme.alpha(Theme.accent2, 0.14)
+                            color: Theme.alpha(Theme.ember, 0.14)
                             border.width: 1
-                            border.color: Theme.alpha(Theme.accent2, 0.40)
+                            border.color: Theme.alpha(Theme.ember, 0.40)
 
                             Text {
                                 anchors.centerIn: parent
                                 text: "✓"
-                                color: Theme.accent2
+                                color: Theme.ember
                                 font { family: Theme.fontMono; pixelSize: 28; weight: Font.Bold }
                             }
                         }
@@ -838,7 +955,7 @@ PanelWindow {
                             radius: Theme.rPill
                             color: chkMa.containsMouse ? Theme.surfaceHigh : Theme.surfaceLow
                             border.width: 1
-                            border.color: chkMa.containsMouse ? Theme.accent2 : Theme.stroke
+                            border.color: chkMa.containsMouse ? Theme.ember : Theme.stroke
 
                             MouseArea {
                                 id: chkMa
@@ -851,7 +968,7 @@ PanelWindow {
                                 id: chkTxt
                                 anchors.centerIn: parent
                                 text: AppCenterState.checkingUpdates ? "Checking updates..." : "Check Again ↻"
-                                color: Theme.accent2
+                                color: Theme.ember
                                 font { family: Theme.fontMono; pixelSize: 10; weight: Font.DemiBold }
                             }
                         }
@@ -868,9 +985,9 @@ PanelWindow {
                             width: parent.width
                             height: 42
                             radius: Theme.rM
-                            color: Theme.alpha(Theme.warn, 0.12)
+                            color: Theme.alpha(Theme.gilded, 0.12)
                             border.width: 1
-                            border.color: Theme.alpha(Theme.warn, 0.35)
+                            border.color: Theme.alpha(Theme.gilded, 0.35)
 
                             Row {
                                 anchors {
@@ -882,7 +999,7 @@ PanelWindow {
 
                                 Rectangle {
                                     width: 8; height: 8; radius: 4
-                                    color: Theme.warn
+                                    color: Theme.gilded
                                     anchors.verticalCenter: parent.verticalCenter
                                 }
 
@@ -891,7 +1008,7 @@ PanelWindow {
                                     spacing: 2
                                     Text {
                                         text: AppCenterState.updates.length + " pending packages ready for update"
-                                        color: Theme.warn
+                                        color: Theme.gilded
                                         font { family: Theme.fontMono; pixelSize: Theme.tCaption; weight: Font.Bold }
                                     }
                                     Text {
@@ -909,9 +1026,9 @@ PanelWindow {
                                     implicitHeight: 28
                                     implicitWidth: upAllTxt.implicitWidth + 18
                                     radius: Theme.rPill
-                                    color: upAllHit.containsMouse ? Theme.alpha(Theme.warn, 0.35) : Theme.alpha(Theme.warn, 0.20)
+                                    color: upAllHit.containsMouse ? Theme.alpha(Theme.gilded, 0.35) : Theme.alpha(Theme.gilded, 0.20)
                                     border.width: 1
-                                    border.color: upAllHit.containsMouse ? Theme.warn : Theme.alpha(Theme.warn, 0.55)
+                                    border.color: upAllHit.containsMouse ? Theme.gilded : Theme.alpha(Theme.gilded, 0.55)
                                     scale: upAllHit.pressed ? 0.94 : (upAllHit.containsMouse ? 1.02 : 1.0)
 
                                     MouseArea {
@@ -926,7 +1043,7 @@ PanelWindow {
                                         id: upAllTxt
                                         anchors.centerIn: parent
                                         text: "Upgrade System ⇧"
-                                        color: Theme.warn
+                                        color: Theme.gilded
                                         font { family: Theme.fontMono; pixelSize: 10; weight: Font.Bold }
                                     }
                                 }
@@ -940,6 +1057,8 @@ PanelWindow {
                             spacing: Theme.s2
                             boundsBehavior: Flickable.StopAtBounds
                             clip: true
+                            reuseItems: true
+                            cacheBuffer: 200
                             model: AppCenterState.updates
 
                             delegate: Rectangle {
@@ -960,7 +1079,7 @@ PanelWindow {
 
                                     Rectangle {
                                         width: 8; height: 8; radius: 4
-                                        color: Theme.warn
+                                        color: Theme.gilded
                                         anchors.verticalCenter: parent.verticalCenter
                                     }
 
@@ -982,13 +1101,13 @@ PanelWindow {
                                                 implicitWidth: srcText.implicitWidth + 8
                                                 radius: 8
                                                 color: modelData.source === "aur"
-                                                       ? Theme.alpha(Theme.accent, 0.20)
-                                                       : Theme.alpha(Theme.accent2, 0.20)
+                                                       ? Theme.alpha(Theme.crimson, 0.20)
+                                                       : Theme.alpha(Theme.ember, 0.20)
                                                 Text {
                                                     id: srcText
                                                     anchors.centerIn: parent
                                                     text: (modelData.source || "arch").toUpperCase()
-                                                    color: modelData.source === "aur" ? Theme.accent : Theme.accent2
+                                                    color: modelData.source === "aur" ? Theme.crimsonText : Theme.ember
                                                     font { family: Theme.fontMono; pixelSize: 8; weight: Font.Bold }
                                                 }
                                             }
@@ -1008,7 +1127,7 @@ PanelWindow {
                                             }
                                             Text {
                                                 text: modelData.new || "latest"
-                                                color: Theme.warn
+                                                color: Theme.gilded
                                                 font { family: Theme.fontMono; pixelSize: Theme.tCaption; weight: Font.DemiBold }
                                             }
                                         }
@@ -1020,9 +1139,9 @@ PanelWindow {
                                         implicitHeight: 28
                                         implicitWidth: 84
                                         radius: Theme.rPill
-                                        color: singleUpdHit.containsMouse ? Theme.alpha(Theme.warn, 0.28) : Theme.surfaceLow
+                                        color: singleUpdHit.containsMouse ? Theme.alpha(Theme.gilded, 0.28) : Theme.surfaceLow
                                         border.width: 1
-                                        border.color: singleUpdHit.containsMouse ? Theme.warn : Theme.stroke
+                                        border.color: singleUpdHit.containsMouse ? Theme.gilded : Theme.stroke
                                         scale: singleUpdHit.pressed ? 0.95 : 1.0
 
                                         MouseArea {
@@ -1036,7 +1155,7 @@ PanelWindow {
                                         Text {
                                             anchors.centerIn: parent
                                             text: "Update"
-                                            color: Theme.warn
+                                            color: Theme.gilded
                                             font { family: Theme.fontMono; pixelSize: 10; weight: Font.DemiBold }
                                         }
                                     }
@@ -1081,14 +1200,14 @@ PanelWindow {
 
                                 Rectangle {
                                     width: 28; height: 28; radius: 8
-                                    color: Theme.alpha(Theme.accent, 0.18)
+                                    color: Theme.alpha(Theme.crimson, 0.18)
                                     border.width: 1
-                                    border.color: Theme.alpha(Theme.accent, 0.40)
+                                    border.color: Theme.alpha(Theme.crimson, 0.40)
                                     anchors.verticalCenter: parent.verticalCenter
                                     Text {
                                         anchors.centerIn: parent
                                         text: "⚙"
-                                        color: Theme.accent
+                                        color: Theme.crimsonText
                                         font.pixelSize: 13
                                     }
                                 }
@@ -1134,7 +1253,7 @@ PanelWindow {
                                     installed: true
                                     activeText: "Arch Core Active ✓"
                                     badgeText: "PACMAN"
-                                    badgeColor: Theme.accent2
+                                    badgeColor: Theme.ember
                                 }
 
                                 // Paru AUR Helper Card
@@ -1148,7 +1267,7 @@ PanelWindow {
                                     activeText: "Paru Active ✓"
                                     enableActionText: "Install Paru"
                                     badgeText: "AUR (RUST)"
-                                    badgeColor: Theme.accent
+                                    badgeColor: Theme.alarm
                                     onEnableRequested: AppCenterState.enableManager("paru")
                                 }
 
@@ -1163,7 +1282,7 @@ PanelWindow {
                                     activeText: "Yay Active ✓"
                                     enableActionText: "Install Yay"
                                     badgeText: "AUR (GO)"
-                                    badgeColor: "#38BDF8"
+                                    badgeColor: Theme.alarm
                                     onEnableRequested: AppCenterState.enableManager("yay")
                                 }
 
@@ -1178,7 +1297,7 @@ PanelWindow {
                                     activeText: "Flathub Active ✓"
                                     enableActionText: "Enable Flatpak"
                                     badgeText: "FLATHUB"
-                                    badgeColor: "#10B981"
+                                    badgeColor: Theme.gilded
                                     onEnableRequested: AppCenterState.enableManager("flatpak")
                                 }
 
@@ -1193,7 +1312,7 @@ PanelWindow {
                                     activeText: "Snapd Active ✓"
                                     enableActionText: "Install Snapd"
                                     badgeText: "SNAP"
-                                    badgeColor: Theme.warn
+                                    badgeColor: Theme.crimson
                                     onEnableRequested: AppCenterState.enableManager("snap")
                                 }
 
@@ -1208,7 +1327,7 @@ PanelWindow {
                                     activeText: "AppImage Ready ✓"
                                     enableActionText: "Install AppImage"
                                     badgeText: "APPIMAGE"
-                                    badgeColor: "#EC4899"
+                                    badgeColor: Theme.crimsonText
                                     onEnableRequested: AppCenterState.enableManager("appimage")
                                 }
                             }
@@ -1249,7 +1368,7 @@ PanelWindow {
             height: Math.max(22, (sbar.flickable.height / Math.max(sbar.flickable.contentHeight, 1)) * sbar.flickable.height)
             y: Math.max(0, Math.min(sbar.flickable.height - height,
                 (sbar.flickable.contentY / Math.max(sbar.flickable.contentHeight - sbar.flickable.height, 1)) * (sbar.flickable.height - height)))
-            color: Theme.alpha(Theme.accent, 0.55)
+            color: Theme.alpha(Theme.crimson, 0.55)
             opacity: (sbar.flickable.moving || sbar.flickable.flicking || thumbHit.containsMouse) ? 1.0 : 0.28
             Behavior on opacity { NumberAnimation { duration: Theme.durFast } }
 
@@ -1265,7 +1384,7 @@ PanelWindow {
     component AppCard: Rectangle {
         id: card
         property var appData: ({})
-        readonly property color cardBg: Qt.rgba(0.07, 0.09, 0.14, 0.72)
+        readonly property color cardBg: Qt.rgba(0.09, 0.043, 0.05, 0.75)
         readonly property color cardBorder: Qt.rgba(1, 1, 1, 0.08)
 
         height: 68
@@ -1279,15 +1398,18 @@ PanelWindow {
         Behavior on border.color { ColorAnimation { duration: Theme.durFast } }
         Behavior on scale { NumberAnimation { duration: Theme.durFast } }
 
-        readonly property string appId: appData.id || appData.name || ""
-        readonly property string appTitle: appData.title || appData.name || ""
-        readonly property string appDesc: appData.description || ""
-        readonly property string appSource: (appData.source || "aur").toUpperCase()
-        readonly property bool isInstalled: appData.installed || false
+        readonly property string appId: (card.appData && (card.appData.id || card.appData.name)) || ""
+        readonly property string appTitle: (card.appData && (card.appData.title || card.appData.name)) || ""
+        readonly property string appDesc: (card.appData && card.appData.description) || ""
+        readonly property string appSource: (card.appData && card.appData.source ? card.appData.source : "aur").toUpperCase()
+        readonly property bool isInstalled: !!(card.appData && card.appData.installed)
         readonly property bool isInstalling: AppCenterState.installingId === card.appId
         readonly property color sourceAccentColor: card.appSource === "AUR"
-                                                   ? Theme.accent
-                                                   : (card.appSource === "FLATPAK" ? "#10B981" : Theme.accent2)
+                                                   ? Theme.alarm
+                                                   : (card.appSource === "FLATPAK" ? Theme.gilded : Theme.ember)
+
+        readonly property string appIcon: (card.appData && card.appData.icon) ? String(card.appData.icon) : ""
+        readonly property bool hasIconUrl: appIcon.indexOf("http://") === 0 || appIcon.indexOf("https://") === 0 || appIcon.indexOf("file://") === 0 || appIcon.indexOf("/") === 0
 
         MouseArea {
             id: cardHit
@@ -1303,7 +1425,7 @@ PanelWindow {
             }
             spacing: Theme.s3
 
-            // App Monogram with Gradient Fill
+            // App Monogram / Remote Icon Box
             Rectangle {
                 width: 42
                 height: 42
@@ -1312,19 +1434,36 @@ PanelWindow {
                 border.width: 1
                 border.color: Theme.alpha(card.sourceAccentColor, 0.40)
                 anchors.verticalCenter: parent.verticalCenter
+                scale: cardHit.containsMouse ? 1.05 : 1.0
+                Behavior on scale { NumberAnimation { duration: Theme.durFast } }
+
+                // Remote Flathub icon when available
+                Image {
+                    id: remoteIcon
+                    anchors.centerIn: parent
+                    width: 28
+                    height: 28
+                    source: card.hasIconUrl ? card.appIcon : ""
+                    fillMode: Image.PreserveAspectFit
+                    asynchronous: true
+                    smooth: true
+                    mipmap: true
+                    visible: card.hasIconUrl && status === Image.Ready
+                }
 
                 Text {
                     anchors.centerIn: parent
-                    text: card.appTitle.charAt(0).toUpperCase()
+                    text: card.appTitle.length > 0 ? card.appTitle.charAt(0).toUpperCase() : "✦"
                     color: card.sourceAccentColor
                     font { family: Theme.fontMono; pixelSize: 18; weight: Font.Bold }
+                    visible: !card.hasIconUrl || remoteIcon.status !== Image.Ready
                 }
 
                 // Tiny indicator dot in corner
                 Rectangle {
                     anchors { bottom: parent.bottom; right: parent.right; margins: 3 }
                     width: 5; height: 5; radius: 2.5
-                    color: card.isInstalled ? Theme.accent2 : card.sourceAccentColor
+                    color: card.isInstalled ? Theme.ember : card.sourceAccentColor
                 }
             }
 
@@ -1365,26 +1504,26 @@ PanelWindow {
 
                     // Official Arch Repo Pill (e.g. extra, core)
                     Rectangle {
-                        visible: !!card.appData.repo
+                        visible: !!(card.appData && card.appData.repo)
                         implicitHeight: 16
                         implicitWidth: repoTxt.implicitWidth + 8
                         radius: 8
-                        color: Theme.alpha(Theme.accent2, 0.14)
+                        color: Theme.alpha(Theme.ember, 0.14)
                         border.width: 1
-                        border.color: Theme.alpha(Theme.accent2, 0.35)
+                        border.color: Theme.alpha(Theme.ember, 0.35)
 
                         Text {
                             id: repoTxt
                             anchors.centerIn: parent
-                            text: (card.appData.repo || "").toUpperCase()
-                            color: Theme.accent2
+                            text: (card.appData && card.appData.repo ? card.appData.repo : "").toUpperCase()
+                            color: Theme.ember
                             font { family: Theme.fontMono; pixelSize: 8; weight: Font.Bold }
                         }
                     }
 
                     // Category Pill (clickable to filter)
                     Rectangle {
-                        visible: !!card.appData.category
+                        visible: !!(card.appData && card.appData.category)
                         implicitHeight: 16
                         implicitWidth: catTxt.implicitWidth + 10
                         radius: 8
@@ -1395,7 +1534,7 @@ PanelWindow {
                         Text {
                             id: catTxt
                             anchors.centerIn: parent
-                            text: card.appData.category || ""
+                            text: (card.appData && card.appData.category) ? card.appData.category : ""
                             color: Theme.textDim
                             font { family: Theme.fontUi; pixelSize: 8; weight: Font.Medium }
                         }
@@ -1404,7 +1543,7 @@ PanelWindow {
                             anchors.fill: parent
                             cursorShape: Qt.PointingHandCursor
                             onClicked: {
-                                if (card.appData.category) {
+                                if (card.appData && card.appData.category) {
                                     AppCenterState.setCategory(card.appData.category);
                                 }
                             }
@@ -1413,46 +1552,46 @@ PanelWindow {
 
                     // Popularity Pill (stars/rating)
                     Rectangle {
-                        visible: !!card.appData.popularity && card.appData.popularity > 0
+                        visible: !!(card.appData && card.appData.popularity && card.appData.popularity > 0)
                         implicitHeight: 16
                         implicitWidth: popTxt.implicitWidth + 8
                         radius: 8
-                        color: Theme.alpha(Theme.warn, 0.14)
+                        color: Theme.alpha(Theme.gilded, 0.14)
                         border.width: 1
-                        border.color: Theme.alpha(Theme.warn, 0.35)
+                        border.color: Theme.alpha(Theme.gilded, 0.35)
 
                         Text {
                             id: popTxt
                             anchors.centerIn: parent
-                            text: "★ " + card.appData.popularity
-                            color: Theme.warn
+                            text: "★ " + (card.appData && card.appData.popularity ? card.appData.popularity : "")
+                            color: Theme.gilded
                             font { family: Theme.fontMono; pixelSize: 8; weight: Font.Bold }
                         }
                     }
 
                     // Votes Pill (AUR votes)
                     Rectangle {
-                        visible: !!card.appData.votes && card.appData.votes > 0
+                        visible: !!(card.appData && card.appData.votes && card.appData.votes > 0)
                         implicitHeight: 16
                         implicitWidth: voteTxt.implicitWidth + 8
                         radius: 8
-                        color: Theme.alpha(Theme.accent, 0.14)
+                        color: Theme.alpha(Theme.crimson, 0.14)
                         border.width: 1
-                        border.color: Theme.alpha(Theme.accent, 0.35)
+                        border.color: Theme.alpha(Theme.crimson, 0.35)
 
                         Text {
                             id: voteTxt
                             anchors.centerIn: parent
-                            text: "▲ " + card.appData.votes
-                            color: Theme.accent
+                            text: "▲ " + (card.appData && card.appData.votes ? card.appData.votes : "")
+                            color: Theme.crimsonText
                             font { family: Theme.fontMono; pixelSize: 8; weight: Font.Bold }
                         }
                     }
 
                     // Version
                     Text {
-                        visible: !!card.appData.version && card.appData.version !== "latest" && card.appData.version !== "official"
-                        text: "v" + card.appData.version
+                        visible: !!(card.appData && card.appData.version && card.appData.version !== "latest" && card.appData.version !== "official")
+                        text: "v" + (card.appData && card.appData.version ? card.appData.version : "")
                         color: Theme.textFaint
                         font { family: Theme.fontMono; pixelSize: 9 }
                         elide: Text.ElideRight
@@ -1461,7 +1600,7 @@ PanelWindow {
 
                 Text {
                     width: parent.width
-                    text: card.appDesc + (card.appData.maintainer ? (" · by " + card.appData.maintainer) : "")
+                    text: card.appDesc + (card.appData && card.appData.maintainer ? (" · by " + card.appData.maintainer) : "")
                     color: Theme.textDim
                     font { family: Theme.fontUi; pixelSize: Theme.tCaption }
                     elide: Text.ElideRight
@@ -1479,16 +1618,16 @@ PanelWindow {
                 readonly property bool btnHovered: actHit.containsMouse
 
                 color: card.isInstalling
-                       ? Theme.alpha(Theme.warn, 0.22)
+                       ? Theme.alpha(Theme.gilded, 0.22)
                        : card.isInstalled
-                       ? (btnHovered ? Theme.alpha(Theme.danger, 0.22) : Theme.alpha(Theme.accent2, 0.14))
+                       ? (btnHovered ? Theme.alpha(Theme.alarm, 0.22) : Theme.alpha(Theme.ember, 0.14))
                        : (btnHovered ? Theme.alpha(card.sourceAccentColor, 0.28) : Theme.surfaceLow)
 
                 border.width: 1
                 border.color: card.isInstalling
-                             ? Theme.warn
+                             ? Theme.gilded
                              : card.isInstalled
-                             ? (btnHovered ? Theme.danger : Theme.alpha(Theme.accent2, 0.40))
+                             ? (btnHovered ? Theme.alarm : Theme.alpha(Theme.ember, 0.40))
                              : (btnHovered ? card.sourceAccentColor : Theme.stroke)
 
                 scale: actHit.pressed ? 0.94 : (btnHovered ? 1.03 : 1.0)
@@ -1503,9 +1642,9 @@ PanelWindow {
                     cursorShape: Qt.PointingHandCursor
                     onClicked: {
                         if (card.isInstalled) {
-                            AppCenterState.uninstallApp(card.appData.source || "aur", card.appId);
+                            AppCenterState.uninstallApp((card.appData && card.appData.source) || "aur", card.appId);
                         } else {
-                            AppCenterState.installApp(card.appData.source || "aur", card.appId);
+                            AppCenterState.installApp((card.appData && card.appData.source) || "aur", card.appId);
                         }
                     }
                 }
@@ -1517,7 +1656,7 @@ PanelWindow {
                     Text {
                         visible: card.isInstalling
                         text: "◐"
-                        color: Theme.warn
+                        color: Theme.gilded
                         font.pixelSize: 11
                         rotation: Theme.heartbeatPhase * 360
                     }
@@ -1526,8 +1665,8 @@ PanelWindow {
                         text: card.isInstalling ? "Installing..."
                             : card.isInstalled ? (actionBtn.btnHovered ? "Uninstall ✕" : "Installed ✓")
                             : "Install +"
-                        color: card.isInstalling ? Theme.warn
-                             : card.isInstalled ? (actionBtn.btnHovered ? Theme.danger : Theme.accent2)
+                        color: card.isInstalling ? Theme.gilded
+                             : card.isInstalled ? (actionBtn.btnHovered ? Theme.alarm : Theme.ember)
                              : (actionBtn.btnHovered ? card.sourceAccentColor : Theme.text)
                         font { family: Theme.fontMono; pixelSize: Theme.tMicro; weight: Font.DemiBold }
                     }
@@ -1548,10 +1687,10 @@ PanelWindow {
         property string inactiveText: "Not Installed"
         property string enableActionText: ""
         property string badgeText: ""
-        property color badgeColor: Theme.accent
+        property color badgeColor: Theme.crimson
         signal enableRequested()
 
-        readonly property color cardBg: Qt.rgba(0.07, 0.09, 0.14, 0.72)
+        readonly property color cardBg: Qt.rgba(0.09, 0.043, 0.05, 0.75)
         readonly property color cardBorder: Qt.rgba(1, 1, 1, 0.08)
         readonly property bool isEnabling: AppCenterState.enablingManager === engCard.managerId
 
@@ -1560,8 +1699,10 @@ PanelWindow {
         color: engHit.containsMouse ? Theme.surfaceHigh : engCard.cardBg
         border.width: 1
         border.color: engHit.containsMouse ? Theme.alpha(engCard.badgeColor, 0.45) : engCard.cardBorder
+        scale: engHit.pressed ? 0.99 : 1.0
         Behavior on color { ColorAnimation { duration: Theme.durFast } }
         Behavior on border.color { ColorAnimation { duration: Theme.durFast } }
+        Behavior on scale { NumberAnimation { duration: Theme.durFast } }
 
         MouseArea {
             id: engHit
@@ -1586,6 +1727,8 @@ PanelWindow {
                 border.width: 1
                 border.color: Theme.alpha(engCard.badgeColor, 0.40)
                 anchors.verticalCenter: parent.verticalCenter
+                scale: engHit.containsMouse ? 1.05 : 1.0
+                Behavior on scale { NumberAnimation { duration: Theme.durFast } }
 
                 Text {
                     anchors.centerIn: parent
@@ -1598,7 +1741,7 @@ PanelWindow {
                 Rectangle {
                     anchors { bottom: parent.bottom; right: parent.right; margins: 3 }
                     width: 6; height: 6; radius: 3
-                    color: engCard.installed ? Theme.accent2 : Theme.warn
+                    color: engCard.installed ? Theme.ember : Theme.gilded
                 }
             }
 
@@ -1658,7 +1801,7 @@ PanelWindow {
 
                     Text {
                         text: "◐"
-                        color: Theme.warn
+                        color: Theme.gilded
                         font.pixelSize: 12
                         rotation: Theme.heartbeatPhase * 360
                         anchors.verticalCenter: parent.verticalCenter
@@ -1666,7 +1809,7 @@ PanelWindow {
 
                     Text {
                         text: "Installing Engine..."
-                        color: Theme.warn
+                        color: Theme.gilded
                         font { family: Theme.fontMono; pixelSize: 10; weight: Font.DemiBold }
                         anchors.verticalCenter: parent.verticalCenter
                     }
@@ -1680,9 +1823,9 @@ PanelWindow {
                     implicitHeight: 28
                     implicitWidth: instRow.implicitWidth + 16
                     radius: Theme.rPill
-                    color: Theme.alpha(Theme.accent2, 0.14)
+                    color: Theme.alpha(Theme.ember, 0.14)
                     border.width: 1
-                    border.color: Theme.alpha(Theme.accent2, 0.40)
+                    border.color: Theme.alpha(Theme.ember, 0.40)
 
                     Row {
                         id: instRow
@@ -1691,13 +1834,13 @@ PanelWindow {
 
                         Rectangle {
                             width: 6; height: 6; radius: 3
-                            color: Theme.accent2
+                            color: Theme.ember
                             anchors.verticalCenter: parent.verticalCenter
                         }
 
                         Text {
                             text: engCard.activeText
-                            color: Theme.accent2
+                            color: Theme.ember
                             font { family: Theme.fontMono; pixelSize: 10; weight: Font.Medium }
                         }
                     }

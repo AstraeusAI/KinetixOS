@@ -15,6 +15,7 @@ QtObject {
     property var coreLoads: []
     property real cpuTemp: 0
     property real cpuFreq: 0
+    property string cpuModel: ""
     property real load1: 0
     property real load5: 0
     property real load15: 0
@@ -37,6 +38,7 @@ QtObject {
     property real rxTotalGb: 0   // Cumulative session GB
     property real txTotalGb: 0   // Cumulative session GB
     property string netIface: "eth0"
+    property string netIp: ""
     property var netInterfaces: []
 
     // ── GPU Telemetry ─────────────────────────────────────────────────────
@@ -49,10 +51,28 @@ QtObject {
     property real diskUsedGb: 0
     property real diskTotalGb: 0
     property real diskFreeGb: 0
+    property real diskReadKbps: 0
+    property real diskWriteKbps: 0
+
+    // ── Per-core frequency & fan sensors ────────────────────────────────
+    // coreFreqs is index-aligned with coreLoads (both walk cpu0, cpu1, ...
+    // in order — see argus-sysmon.py's read_cpu_freqs()). fans is empty,
+    // not a placeholder zero entry, on hosts with no exposed sensor.
+    property var coreFreqs: []
+    property var fans: []
+
+    // ── Battery (laptops only) ────────────────────────────────────────────
+    // batteryPresent gates the UI entirely — a desktop with no battery gets
+    // no stat at all, not a permanent "no battery" placeholder.
+    property bool batteryPresent: false
+    property int batteryPct: 0
+    property bool batteryCharging: false
+    property string batteryStatus: ""
 
     // ── Processes & Host Metadata ─────────────────────────────────────────
     property var topProcs: []
     property string kernel: "Linux"
+    property string hostname: ""
     property string uptime: "—"
 
     property bool ready: false
@@ -67,6 +87,7 @@ QtObject {
     property var netHist: []
     property var rxHist: []
     property var txHist: []
+    property var diskIoHist: []
     readonly property int histLen: 48
 
     function push(arr, v) {
@@ -102,8 +123,10 @@ QtObject {
         cpu = d.cpu !== undefined ? d.cpu : 0;
         cpuCores = d.cpu_cores || 0;
         coreLoads = d.core_loads || [];
+        coreFreqs = d.core_freqs || [];
         cpuFreq = d.cpu_freq || 0;
         cpuTemp = d.cpu_temp || 0;
+        if (d.cpu_model) cpuModel = d.cpu_model;
         if (d.load && d.load.length >= 3) {
             load1 = d.load[0];
             load5 = d.load[1];
@@ -129,6 +152,7 @@ QtObject {
             rxTotalGb = d.net.rx_total_gb || 0;
             txTotalGb = d.net.tx_total_gb || 0;
             netIface = d.net.active_iface || "eth0";
+            netIp = d.net.active_ip || "";
             netInterfaces = d.net.interfaces || [];
         }
 
@@ -137,31 +161,52 @@ QtObject {
             diskUsedGb = d.storage.used_gb || 0;
             diskTotalGb = d.storage.total_gb || 0;
             diskFreeGb = d.storage.free_gb || 0;
+            diskReadKbps = d.storage.read_kbps || 0;
+            diskWriteKbps = d.storage.write_kbps || 0;
         }
 
         gpus = d.gpus || [];
         if (gpus.length > 0) {
-            gpu = gpus[0].load || 0;
-            gpuTemp = gpus[0].temp || 0;
+            if (d.gpu_load !== undefined) {
+                gpu = d.gpu_load;
+                gpuTemp = d.gpu_temp || 0;
+            } else {
+                var maxL = 0;
+                var maxT = 0;
+                for (var gi = 0; gi < gpus.length; gi++) {
+                    if ((gpus[gi].load || 0) > maxL) maxL = gpus[gi].load;
+                    if ((gpus[gi].temp || 0) > maxT) maxT = gpus[gi].temp;
+                }
+                gpu = maxL;
+                gpuTemp = maxT;
+            }
+        } else {
+            gpu = 0;
+            gpuTemp = 0;
         }
 
+        fans = d.fans || [];
+        if (d.battery) {
+            batteryPresent = !!d.battery.present;
+            batteryPct = d.battery.pct || 0;
+            batteryCharging = !!d.battery.charging;
+            batteryStatus = d.battery.status || "";
+        }
         topProcs = d.processes || [];
         if (d.kernel) kernel = d.kernel;
+        if (d.hostname) hostname = d.hostname;
         if (d.uptime) uptime = d.uptime;
 
         cpuHist = push(cpuHist, cpu);
         memHist = push(memHist, memPct);
         gpuHist = push(gpuHist, gpu);
         netHist = push(netHist, rx + tx);
-        if (AgentState.sysOpen) {
-            if (rxHist.length < 2) rxHist = [rx, rx];
-            else rxHist = push(rxHist, rx);
-            if (txHist.length < 2) txHist = [tx, tx];
-            else txHist = push(txHist, tx);
-            if (cpuTemp > 0) cpuTempHist = push(cpuTempHist, cpuTemp);
-            if (cpuFreq > 0) cpuFreqHist = push(cpuFreqHist, cpuFreq);
-            swapHist = push(swapHist, swapPct);
-        }
+        rxHist = push(rxHist, rx);
+        txHist = push(txHist, tx);
+        if (cpuTemp > 0) cpuTempHist = push(cpuTempHist, cpuTemp);
+        if (cpuFreq > 0) cpuFreqHist = push(cpuFreqHist, cpuFreq);
+        swapHist = push(swapHist, swapPct);
+        diskIoHist = push(diskIoHist, diskReadKbps + diskWriteKbps);
         ready = true;
     }
 

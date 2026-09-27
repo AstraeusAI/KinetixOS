@@ -1,0 +1,10 @@
+[Trigger]
+Operation = Install
+Operation = Upgrade
+Type = Package
+Target = pacman
+
+[Action]
+Description = Configure KinetixOS package repositories
+When = PostTransaction
+Exec = /usr/bin/cp /usr/share/kinetix/config/pacman.conf /etc/pacman.conf

@@ -11,12 +11,32 @@ TOOLS = toolreg.schemas()
 
 
 def to_anthropic(messages):
-    """Convert neutral messages to Anthropic system+messages shape."""
+    """Convert neutral messages to Anthropic system+messages shape.
+
+    The system side comes back as an ordered list of `{"text", "cache"}`
+    entries rather than one joined string. That used to be a plain
+    `"\n\n".join(...)`, which is lossy in a way that mattered: Anthropic only
+    lets a `cache_control` breakpoint sit on a *block*, so a flattened system
+    string has exactly one cacheable unit, and this runtime's system messages
+    are not uniformly volatile — the prompt and the workspace preamble are
+    byte-identical on every call of a task, while memories, the condensed
+    history and the plan change underneath them. One breakpoint over the joined
+    whole therefore misses on every call after the first change to any of
+    them, and since the tool schemas plus the system prompt are ~13.7k tokens
+    on this host, that is the difference between paying for them once per task
+    and paying for them on all 64 steps of it.
+
+    Each entry keeps the `cache` tier its author declared (see journal.context):
+    "stable" for content that cannot change within a task, "semi" for content
+    that changes rarely. `anthropic_system_blocks` turns the tiers into
+    breakpoints. Every other adapter reads only `role`/`content` and ignores
+    the key, so nothing else has to know this exists.
+    """
     systems, out = [], []
     for m in messages:
         role = m["role"]
         if role == "system":
-            systems.append(m["content"])
+            systems.append({"text": m["content"], "cache": m.get("cache")})
             continue
         if role == "user":
             content = m["content"]
@@ -71,7 +91,57 @@ def to_anthropic(messages):
                     ],
                 }
             )
-    return "\n\n".join(x for x in systems if x), out
+    return systems, out
+
+
+def anthropic_system_blocks(systems):
+    """Anthropic `system` content blocks, with prompt-cache breakpoints.
+
+    Two tiers, in the order Anthropic reads them: `cache_control` is placed on
+    the last "stable" block and on the last "semi" block, so the stable prefix
+    is written once per task and the semi-stable band is re-written only when
+    the model actually records a memory or ticks off a todo.
+
+    Everything *after* a breakpoint is outside that cache unit, so the volatile
+    tail of the system list — the budget notice the loop appends when the step
+    count runs low — does not invalidate either tier. It did before this
+    existed only because there was a single unit covering all of it.
+
+    The last block always carries a breakpoint even if nothing declared a tier,
+    so a request that somehow carries no cacheable system content still gets
+    the tools-side cache that `cached_tools` puts on the last tool.
+    """
+    entries = [(s["text"], s.get("cache")) for s in systems if s.get("text")]
+    blocks = [{"type": "text", "text": t} for t, _ in entries]
+    marked = set()
+    for tier in ("stable", "semi"):
+        for i in range(len(entries) - 1, -1, -1):
+            if i in marked:
+                continue
+            if entries[i][1] == tier:
+                blocks[i]["cache_control"] = {"type": "ephemeral"}
+                marked.add(i)
+                break
+    if blocks and not marked:
+        blocks[-1]["cache_control"] = {"type": "ephemeral"}
+    return blocks
+
+
+def cached_tools(tools):
+    """The tools array with a cache breakpoint on its last entry.
+
+    Anthropic caches in the order tools → system → messages, so a breakpoint
+    here covers the whole tool schema block. That block is the single largest
+    fixed cost in a request here (~8.2k tokens across 59 tools on this host)
+    and it is byte-identical for the life of the process: `TOOLS` is built once
+    at adapters import, and MCP tools are registered into the registry at
+    tools.py import too, so nothing mutates it mid-task and the prefix stays
+    warm across all of a task's calls.
+    """
+    out = [dict(t) for t in tools]
+    if out:
+        out[-1] = {**out[-1], "cache_control": {"type": "ephemeral"}}
+    return out
 
 
 def to_openai(messages):
@@ -101,6 +171,14 @@ def to_openai(messages):
                         }
                     )
             out.append({"role": "user", "content": blocks})
+        elif m["role"] == "system":
+            # Rebuilt rather than passed through. System messages now carry a
+            # `cache` tier for the Anthropic breakpoint logic, and OpenAI's
+            # chat.completions rejects a message with an unrecognized property
+            # ("Unrecognized request argument supplied: cache") — so passing
+            # the dict straight through would have turned a caching
+            # improvement into a 400 on every OpenAI and OpenRouter call.
+            out.append({"role": "system", "content": m["content"]})
         else:
             out.append(m)
     return out

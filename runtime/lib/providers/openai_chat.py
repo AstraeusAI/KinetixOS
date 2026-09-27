@@ -206,10 +206,22 @@ def _stream_openai_chat(url, headers, body, on_event):
         fr = finish_reason or "no finish_reason (empty body / zero data events)"
         hint = ""
         if fr == "length":
+            # Escalate for the retry _call_stream is about to attempt: `body`
+            # is the exact dict object the retry loop reuses (same `rest`
+            # tuple passed back into `fn`), so mutating it here actually
+            # changes the next attempt instead of repeating the identical
+            # doomed request. Observed live (mimo-v2.6-flash via OpenRouter,
+            # quality_loop.py round 1, trial 2): all _MAX_PROVIDER_RETRIES
+            # attempts failed identically at the fixed 8192 floor — reasoning
+            # alone consumed it every time, so retrying without more headroom
+            # cannot change the outcome.
+            old = body.get("max_tokens", 8192)
+            new = min(old * 2, 32000)
+            body["max_tokens"] = new
             hint = (
                 " — reasoning appears to have consumed the entire "
-                "completion budget; max_tokens headroom is set on "
-                "reasoning-enabled requests"
+                "completion budget; max_tokens headroom raised "
+                f"{old}->{new} for the retry"
             )
         raise ProviderError(
             f"stream ended with no content and no tool calls "

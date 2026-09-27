@@ -1,0 +1,67 @@
+#!/usr/bin/env bash
+# kinetix-snapshot — take a rollback point before a risky change.
+#
+# Two mechanisms, in order of preference, because they give different things:
+#
+#   snapper      A configured snapper handles the bootloader entry, so the
+#                snapshot is selectable at boot. This is the only method that
+#                gives a real "restart and pick the old system" rollback.
+#   btrfs        A plain read-only subvolume snapshot, if /.snapshots is its
+#                own subvolume. Recoverable by a human who knows btrfs, but
+#                not bootable on its own.
+#
+# Anything else refuses rather than pretending: an update that *thinks* it has
+# a rollback and does not is worse than an update that says it has none.
+set -Eeuo pipefail
+
+LABEL="${1:-manual}"
+PRINT_ONLY=0
+[[ "${2:-}" == "--print" || "${1:-}" == "--print" ]] && PRINT_ONLY=1
+
+SNAPSHOT_DIR="${KINETIX_SNAPSHOT_DIR:-/.snapshots}"
+stamp="$(date -u +%Y%m%dT%H%M%SZ)"
+slug="kinetix-${LABEL//[^a-zA-Z0-9._-]/-}-${stamp}"
+
+is_btrfs_root() {
+    [[ "$(findmnt -no FSTYPE / 2>/dev/null)" == "btrfs" ]]
+}
+
+# ── snapper ──────────────────────────────────────────────────────────────────
+if command -v snapper >/dev/null 2>&1 && snapper -c root get-config >/dev/null 2>&1; then
+    if (( PRINT_ONLY )); then
+        printf 'method=snapper config=root description=%s\n' "$slug"
+        exit 0
+    fi
+    # --type pre pairs this with the matching post snapshot in snapper's own
+    # bookkeeping; --print-number is the stable id used in the rollback hint.
+    num="$(snapper -c root create --type pre --description "$slug" --print-number)"
+    printf 'snapper:root:%s\n' "$num"
+    exit 0
+fi
+
+# ── plain btrfs subvolume snapshot ───────────────────────────────────────────
+if is_btrfs_root; then
+    if ! btrfs subvolume show / >/dev/null 2>&1; then
+        printf 'kinetix-snapshot: / is btrfs but not a subvolume, so it cannot be snapshotted in place\n' >&2
+        printf '  configure snapper (which uses a subvolume layout) for bootable rollback\n' >&2
+        exit 1
+    fi
+    if ! findmnt -no FSTYPE "$SNAPSHOT_DIR" >/dev/null 2>&1 || ! btrfs subvolume show "$SNAPSHOT_DIR" >/dev/null 2>&1; then
+        printf 'kinetix-snapshot: %s is not a btrfs subvolume\n' "$SNAPSHOT_DIR" >&2
+        printf '  a snapshot stored inside the subvolume it snapshots would recurse; create it with:\n' >&2
+        printf '    btrfs subvolume create %s\n' "$SNAPSHOT_DIR" >&2
+        exit 1
+    fi
+    dest="$SNAPSHOT_DIR/$slug"
+    if (( PRINT_ONLY )); then
+        printf 'method=btrfs dest=%s\n' "$dest"
+        exit 0
+    fi
+    btrfs subvolume snapshot -r / "$dest"
+    printf 'btrfs:%s\n' "$dest"
+    exit 0
+fi
+
+printf 'kinetix-snapshot: no snapshot mechanism available (root is %s, snapper not configured)\n' \
+    "$(findmnt -no FSTYPE / 2>/dev/null || printf 'unknown')" >&2
+exit 1
