@@ -1,9 +1,9 @@
 # Publish a KinetixOS update for every commit pushed to the `stable` branch.
 #
 # Installed systems follow `stable`: this builds the `kinetix` and
-# `kinetix-keyring` packages from the pushed commit, signs them with the
-# KinetixOS key, and publishes them to the signed pacman repo
-# (AstraeusAI/kinetix-pkgs, served by GitHub Pages). Systems then pick the
+# `kinetix-keyring` packages from the pushed commit and publishes them,
+# unsigned, to the pacman repo (AstraeusAI/kinetix-pkgs, served by GitHub
+# Pages; systems use SigLevel = Never for it — see distro/repo/kinetix.conf). Systems then pick the
 # update up through `kinetix update` / the bar's update badge, unchanged.
 #
 # Version: distro/version plus the commit, e.g. 0.1.0.r58.g1a2b3c4 — pacman
@@ -12,11 +12,12 @@
 # Day-to-day work lands on master; promote it with:
 #   git push origin master:stable
 #
-# Secrets (repository settings → Secrets and variables → Actions):
-#   KINETIX_SIGNING_KEY         armored private signing key — the dedicated CI key
-#                               from distro/setup-ci-signing.sh (or your own key)
-#   KINETIX_SIGNING_PASSPHRASE  its passphrase; optional (the CI key has none)
+# Secret (repository settings → Secrets and variables → Actions):
 #   KINETIX_PKGS_DEPLOY_KEY     private half of a write deploy key on kinetix-pkgs
+#
+# To sign again later: add KINETIX_SIGNING_KEY (distro/setup-ci-signing.sh),
+# restore an import step, drop --unsigned below, and set the repo's SigLevel
+# back to Required DatabaseOptional.
 name: Publish KinetixOS update
 
 on:
@@ -35,7 +36,7 @@ jobs:
     container: archlinux:base-devel
     steps:
       - name: Install build tools
-        run: pacman -Syu --noconfirm --needed git gnupg openssh python
+        run: pacman -Syu --noconfirm --needed git openssh python
 
       - uses: actions/checkout@v4
         with:
@@ -59,28 +60,6 @@ jobs:
           useradd -m builder
           chown -R builder "$GITHUB_WORKSPACE"
 
-      - name: Import the signing key
-        env:
-          KINETIX_SIGNING_KEY: ${{ secrets.KINETIX_SIGNING_KEY }}
-          KINETIX_SIGNING_PASSPHRASE: ${{ secrets.KINETIX_SIGNING_PASSPHRASE }}
-        run: |
-          test -n "$KINETIX_SIGNING_KEY" || { echo "::error::KINETIX_SIGNING_KEY secret is not set"; exit 1; }
-          su builder -s /bin/bash -c '
-            set -euo pipefail
-            mkdir -p ~/.gnupg && chmod 700 ~/.gnupg
-            printf "allow-preset-passphrase\nallow-loopback-pinentry\n" > ~/.gnupg/gpg-agent.conf
-            gpgconf --kill gpg-agent || true
-            printf "%s\n" "$KINETIX_SIGNING_KEY" | gpg --batch --import
-            # preset the passphrase for every subkey so makepkg/repo signing never prompts
-            if [ -n "${KINETIX_SIGNING_PASSPHRASE:-}" ]; then
-              gpg --batch --with-colons --with-keygrip --list-secret-keys \
-                | awk -F: "/^grp:/{print \$10}" \
-                | while read -r grip; do
-                    /usr/lib/gnupg/gpg-preset-passphrase --preset -P "$KINETIX_SIGNING_PASSPHRASE" "$grip"
-                  done
-            fi
-          '
-
       - name: Set up the package-repo deploy key
         env:
           KINETIX_PKGS_DEPLOY_KEY: ${{ secrets.KINETIX_PKGS_DEPLOY_KEY }}
@@ -94,7 +73,7 @@ jobs:
             ssh-keyscan -t ed25519 github.com >> ~/.ssh/known_hosts 2>/dev/null
           '
 
-      - name: Build, sign and publish
+      - name: Build and publish
         run: |
           source distro/repo.conf
           su builder -s /bin/bash -c "
@@ -103,5 +82,5 @@ jobs:
             KINETIX_PKGVER='$KINETIX_PKGVER' \
             KINETIX_PKGS_REMOTE='git@github.com:${KINETIX_REPO_OWNER}/${KINETIX_REPO_NAME}.git' \
             GIT_AUTHOR_NAME='KinetixOS CI' GIT_AUTHOR_EMAIL='ci@kinetixos.invalid' \
-            ./distro/publish.sh
+            ./distro/publish.sh --unsigned
           "

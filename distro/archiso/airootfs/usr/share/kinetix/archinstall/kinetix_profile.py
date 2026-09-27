@@ -205,7 +205,8 @@ class KinetixProfile(Profile):
                 f.write("\n[cachyos]\nInclude = /etc/pacman.d/cachyos-mirrorlist\n")
         copy_file("etc/pacman.d/cachyos-mirrorlist", "etc/pacman.d/cachyos-mirrorlist")
 
-        # KinetixOS's own signed repo, so `kinetix update` can replace the
+        # KinetixOS's own repo (unsigned, see distro/repo/kinetix.conf), so
+        # `kinetix update` can replace the
         # desktop files the loose copies below install. The files are copied
         # as loose, unowned files here so the install works offline and before
         # a repo exists at all; the first `kinetix update` adopts them into the
@@ -215,7 +216,7 @@ class KinetixProfile(Profile):
         if pacman_conf.is_file() and "[kinetix]" not in pacman_conf.read_text():
             with pacman_conf.open("a") as f:
                 f.write(
-                    "\n[kinetix]\nSigLevel = Required DatabaseOptional\n"
+                    "\n[kinetix]\nSigLevel = Never\n"
                     "Include = /etc/pacman.d/kinetix-mirrorlist\n"
                 )
         # The public signing key, so the repo above can be verified. Absent if

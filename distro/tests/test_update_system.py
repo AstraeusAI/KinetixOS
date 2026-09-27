@@ -58,24 +58,24 @@ class VersionAndRepoConfigTests(unittest.TestCase):
         # live session with a repo the target does not have (or vice versa).
         canonical = (DISTRO / "repo/kinetix.conf").read_text()
         stanza = (
-            "[kinetix]\nSigLevel = Required DatabaseOptional\n"
+            "[kinetix]\nSigLevel = Never\n"
             "Include = /etc/pacman.d/kinetix-mirrorlist\n"
         )
         self.assertIn(stanza, canonical)
         self.assertIn(stanza, (DISTRO / "archiso/pacman.conf").read_text())
 
-    def test_kinetix_repo_requires_signatures(self):
-        # The whole point of the repo is that it is verified; Optional here
-        # would make signing decorative.
+    def test_kinetix_repo_is_unsigned_by_choice_with_a_way_back(self):
+        # Chosen 2026-09-27: CI publishes unsigned packages from `stable`, so
+        # the repo accepts them. The prose must say how to turn signing back
+        # on, and the signing path must still exist in publish.sh.
         canonical = (DISTRO / "repo/kinetix.conf").read_text()
-        # Check the directive lines, not the prose: the comment deliberately
-        # contrasts this with Arch's upstream `LocalFileSigLevel = Optional`.
         directives = [ln.strip() for ln in canonical.splitlines()
                       if ln.strip().startswith("SigLevel")]
-        self.assertTrue(directives, "no SigLevel directive in the [kinetix] stanza")
-        for line in directives:
-            with self.subTest(directive=line):
-                self.assertIn("Required", line)
+        self.assertEqual(["SigLevel = Never"], directives)
+        self.assertIn("Required DatabaseOptional", canonical)   # the way back
+        installer = (DISTRO / "archiso/airootfs/usr/share/kinetix/archinstall/kinetix_profile.py").read_text()
+        self.assertIn("SigLevel = Never", installer)
+        self.assertNotIn("SigLevel = Required", installer)
 
 
 class MigrationRunnerTests(unittest.TestCase):
@@ -327,11 +327,13 @@ class PackagingTests(unittest.TestCase):
             with self.subTest(src=src):
                 self.assertIn(src, pub)
 
-    def test_publish_requires_a_signing_key_and_says_so(self):
+    def test_publish_signs_by_default_and_can_publish_unsigned(self):
         pub = (DISTRO / "publish.sh").read_text()
         self.assertIn("setup-signing.sh", pub)
         self.assertIn("--sign", pub)
         self.assertIn("--detach-sign", pub)
+        self.assertIn("--unsigned) UNSIGNED=1", pub)
+        self.assertIn("signargs=(--nosign)", pub)
 
     def test_setup_signing_writes_all_three_keyring_files(self):
         text = (DISTRO / "setup-signing.sh").read_text()

@@ -24,10 +24,14 @@ PKG_SRC="$ROOT/distro/package"
 # the user's). Override with KINETIX_PUBLISH_DIR.
 OUT="${KINETIX_PUBLISH_DIR:-$ROOT/distro/.publish}"
 LOCAL_ONLY=0
+# --unsigned (or KINETIX_UNSIGNED=1): publish without signatures, for the
+# SigLevel = Never repo (distro/repo/kinetix.conf). CI publishes this way.
+UNSIGNED="${KINETIX_UNSIGNED:-0}"
 for arg in "$@"; do
     case "$arg" in
         --local) LOCAL_ONLY=1 ;;
-        -h|--help) printf 'usage: distro/publish.sh [--local]\n'; exit 0 ;;
+        --unsigned) UNSIGNED=1 ;;
+        -h|--help) printf 'usage: distro/publish.sh [--local] [--unsigned]\n'; exit 0 ;;
         *) printf 'publish: unknown option %q\n' "$arg" >&2; exit 2 ;;
     esac
 done
@@ -36,7 +40,9 @@ die() { printf 'publish: %s\n' "$*" >&2; exit 1; }
 step() { printf '\n\033[1;31m==>\033[0m %s\n' "$*"; }
 
 (( EUID != 0 )) || die "run as your normal user, not root (makepkg and the signing key are per-user)"
-for tool in makepkg repo-add gpg; do
+tools=(makepkg repo-add)
+(( UNSIGNED )) || tools+=(gpg)
+for tool in "${tools[@]}"; do
     command -v "$tool" >/dev/null 2>&1 || die "$tool is required"
 done
 
@@ -56,18 +62,25 @@ pages_url="https://${pages_owner_lower}.github.io/${KINETIX_REPO_NAME}"
 
 # ── signing key must exist ──────────────────────────────────────────────────
 [[ -d "$PKG_SRC/kinetix-keyring" ]] || die "missing $PKG_SRC/kinetix-keyring"
-keyring_file="$PKG_SRC/kinetix-keyring/kinetix.gpg"
-[[ -s "$keyring_file" ]] || die "no signing key — run distro/setup-signing.sh first"
-# Sign with the first trusted key this machine holds the secret for: the
-# maintainer's release key at a desk, the dedicated CI key in GitHub Actions
-# (distro/setup-ci-signing.sh). Every key in kinetix-trusted verifies.
 trusted=""
-while IFS=: read -r kid _; do
-    [[ -n "$kid" ]] || continue
-    if gpg --list-secret-keys "$kid" >/dev/null 2>&1; then trusted="$kid"; break; fi
-done < "$PKG_SRC/kinetix-keyring/kinetix-trusted"
-[[ -n "$trusted" ]] || die "no key in kinetix-trusted has its secret key here — run distro/setup-signing.sh (or setup-ci-signing.sh for CI)"
-printf 'Signing with key %s, version %s\n' "$trusted" "$pkgver"
+if (( ! UNSIGNED )); then
+    keyring_file="$PKG_SRC/kinetix-keyring/kinetix.gpg"
+    [[ -s "$keyring_file" ]] || die "no signing key — run distro/setup-signing.sh first"
+    # Sign with the first trusted key this machine holds the secret for: the
+    # maintainer's release key at a desk, the dedicated CI key in GitHub Actions
+    # (distro/setup-ci-signing.sh). Every key in kinetix-trusted verifies.
+    trusted=""
+    while IFS=: read -r kid _; do
+        [[ -n "$kid" ]] || continue
+        if gpg --list-secret-keys "$kid" >/dev/null 2>&1; then trusted="$kid"; break; fi
+    done < "$PKG_SRC/kinetix-keyring/kinetix-trusted"
+    [[ -n "$trusted" ]] || die "no key in kinetix-trusted has its secret key here — run distro/setup-signing.sh (or setup-ci-signing.sh for CI)"
+fi
+if (( UNSIGNED )); then
+    printf 'Publishing UNSIGNED, version %s\n' "$pkgver"
+else
+    printf 'Signing with key %s, version %s\n' "$trusted" "$pkgver"
+fi
 
 # ── stage the payload tree the kinetix package installs ─────────────────────
 step "Staging payload"
@@ -127,7 +140,9 @@ build_package() {
            "$PKG_SRC/kinetix-keyring/kinetix-trusted" \
            "$PKG_SRC/kinetix-keyring/kinetix-revoked" "$dir/"
     fi
-    ( cd "$dir" && makepkg --noconfirm -f --nodeps --sign --key "$trusted" >/dev/null )
+    local signargs=(--sign --key "$trusted")
+    (( UNSIGNED )) && signargs=(--nosign)
+    ( cd "$dir" && makepkg --noconfirm -f --nodeps "${signargs[@]}" >/dev/null )
     printf '%s' "$dir"
 }
 
@@ -143,7 +158,8 @@ rm -rf "$OUT/repo"
 mkdir -p "$REPO_DIR"
 shopt -s nullglob
 for pkg in "$kinetix_dir"/*.pkg.tar.zst "$keyring_dir"/*.pkg.tar.zst; do
-    cp -f "$pkg" "$pkg.sig" "$REPO_DIR/"
+    cp -f "$pkg" "$REPO_DIR/"
+    [[ -f "$pkg.sig" ]] && cp -f "$pkg.sig" "$REPO_DIR/"
 done
 shopt -u nullglob
 compgen -G "$REPO_DIR/*.pkg.tar.zst" >/dev/null || die "no packages were built"
@@ -158,7 +174,7 @@ for db in "$REPO_DIR/${KINETIX_PACMAN_REPO}.db" "$REPO_DIR/${KINETIX_PACMAN_REPO
         cp -fL "$db" "$db.real"
         mv -f "$db.real" "$db"
     fi
-    if [[ -f "$db" ]]; then
+    if [[ -f "$db" ]] && (( ! UNSIGNED )); then
         gpg --batch --yes --use-agent -u "$trusted" --detach-sign "$db"
     fi
 done

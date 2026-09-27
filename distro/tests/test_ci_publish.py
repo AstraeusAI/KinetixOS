@@ -25,11 +25,11 @@ class CiPublishTests(unittest.TestCase):
         self.assertLess(self.wf.index("python3 -m unittest discover -s distro/tests"),
                         self.wf.index("./distro/publish.sh"))
 
-    def test_packages_are_signed_and_built_unprivileged(self):
-        for secret in ("KINETIX_SIGNING_KEY", "KINETIX_SIGNING_PASSPHRASE", "KINETIX_PKGS_DEPLOY_KEY"):
-            self.assertIn("secrets." + secret, self.wf)
+    def test_ci_publishes_unsigned_and_unprivileged(self):
+        self.assertIn("./distro/publish.sh --unsigned", self.wf)
+        self.assertIn("secrets.KINETIX_PKGS_DEPLOY_KEY", self.wf)
+        self.assertNotIn("secrets.KINETIX_SIGNING_KEY", self.wf)
         self.assertIn("useradd -m builder", self.wf)       # makepkg refuses root
-        self.assertIn("gpg-preset-passphrase", self.wf)    # signing never prompts in CI
 
     def test_publish_can_push_through_a_git_remote(self):
         self.assertIn('KINETIX_PKGS_REMOTE', self.publish)

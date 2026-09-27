@@ -28,7 +28,7 @@ There are two layers. OS packages come from Arch and CachyOS as before. Kinetix'
 git push origin master:stable
 ```
 
-Each build is versioned `<distro/version>.r<commit count>.g<sha>` (e.g. `0.1.0.r58.g1a2b3c4`), which pacman orders by commit; bump `distro/version` for a named release and it outranks all of them. The job signs with a dedicated CI key rather than your release key: `distro/setup-ci-signing.sh` generates it in a throwaway keyring, stores it as the `KINETIX_SIGNING_KEY` secret and adds its public half to the keyring next to your key, so systems trust packages signed by either. It also needs `KINETIX_PKGS_DEPLOY_KEY` (the private half of a write deploy key on `kinetix-pkgs`). `KINETIX_SIGNING_PASSPHRASE` is only needed if you put a passphrase-protected key there instead.
+Each build is versioned `<distro/version>.r<commit count>.g<sha>` (e.g. `0.1.0.r58.g1a2b3c4`), which pacman orders by commit; bump `distro/version` for a named release and it outranks all of them. Packages are published **unsigned** (chosen 2026-09-27, to avoid managing a signing key): the `[kinetix]` repo uses `SigLevel = Never` on the ISO and on installed systems, so trust rests on write access to `kinetix-pkgs` and on HTTPS from GitHub Pages. The job needs one secret, `KINETIX_PKGS_DEPLOY_KEY` (a write deploy key on `kinetix-pkgs`). To sign again later, see `distro/repo/kinetix.conf`; `distro/setup-ci-signing.sh` and signed `publish.sh` runs are kept for that.
 
 Publishing by hand still works, for a machine that holds the key:
 
