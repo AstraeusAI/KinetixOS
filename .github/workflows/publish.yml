@@ -1,0 +1,106 @@
+# Publish a KinetixOS update for every commit pushed to the `stable` branch.
+#
+# Installed systems follow `stable`: this builds the `kinetix` and
+# `kinetix-keyring` packages from the pushed commit, signs them with the
+# KinetixOS key, and publishes them to the signed pacman repo
+# (AstraeusAI/kinetix-pkgs, served by GitHub Pages). Systems then pick the
+# update up through `kinetix update` / the bar's update badge, unchanged.
+#
+# Version: distro/version plus the commit, e.g. 0.1.0.r58.g1a2b3c4 — pacman
+# orders these by commit count, and bumping distro/version outranks them.
+#
+# Day-to-day work lands on master; promote it with:
+#   git push origin master:stable
+#
+# Secrets (repository settings → Secrets and variables → Actions):
+#   KINETIX_SIGNING_KEY         armored private signing key (gpg --export-secret-keys --armor <key>)
+#   KINETIX_SIGNING_PASSPHRASE  its passphrase
+#   KINETIX_PKGS_DEPLOY_KEY     private half of a write deploy key on kinetix-pkgs
+name: Publish KinetixOS update
+
+on:
+  push:
+    branches: [stable]
+  workflow_dispatch:
+
+# never publish two builds at once; a newer push waits for the running one
+concurrency:
+  group: kinetix-publish
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    container: archlinux:base-devel
+    steps:
+      - name: Install build tools
+        run: pacman -Syu --noconfirm --needed git gnupg openssh python
+
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # the commit count is part of the version
+
+      - name: Version from the commit
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          base="$(tr -d '[:space:]' < distro/version)"
+          count="$(git rev-list --count HEAD)"
+          sha="$(git rev-parse --short=7 HEAD)"
+          echo "KINETIX_PKGVER=${base}.r${count}.g${sha}" >> "$GITHUB_ENV"
+          echo "Publishing ${base}.r${count}.g${sha}"
+
+      - name: Distro contract tests
+        run: python3 -m unittest discover -s distro/tests
+
+      - name: Prepare the build user
+        # makepkg refuses to run as root
+        run: |
+          useradd -m builder
+          chown -R builder "$GITHUB_WORKSPACE"
+
+      - name: Import the signing key
+        env:
+          KINETIX_SIGNING_KEY: ${{ secrets.KINETIX_SIGNING_KEY }}
+          KINETIX_SIGNING_PASSPHRASE: ${{ secrets.KINETIX_SIGNING_PASSPHRASE }}
+        run: |
+          test -n "$KINETIX_SIGNING_KEY" || { echo "::error::KINETIX_SIGNING_KEY secret is not set"; exit 1; }
+          su builder -s /bin/bash -c '
+            set -euo pipefail
+            mkdir -p ~/.gnupg && chmod 700 ~/.gnupg
+            printf "allow-preset-passphrase\nallow-loopback-pinentry\n" > ~/.gnupg/gpg-agent.conf
+            gpgconf --kill gpg-agent || true
+            printf "%s\n" "$KINETIX_SIGNING_KEY" | gpg --batch --import
+            # preset the passphrase for every subkey so makepkg/repo signing never prompts
+            if [ -n "${KINETIX_SIGNING_PASSPHRASE:-}" ]; then
+              gpg --batch --with-colons --with-keygrip --list-secret-keys \
+                | awk -F: "/^grp:/{print \$10}" \
+                | while read -r grip; do
+                    /usr/lib/gnupg/gpg-preset-passphrase --preset -P "$KINETIX_SIGNING_PASSPHRASE" "$grip"
+                  done
+            fi
+          '
+
+      - name: Set up the package-repo deploy key
+        env:
+          KINETIX_PKGS_DEPLOY_KEY: ${{ secrets.KINETIX_PKGS_DEPLOY_KEY }}
+        run: |
+          test -n "$KINETIX_PKGS_DEPLOY_KEY" || { echo "::error::KINETIX_PKGS_DEPLOY_KEY secret is not set"; exit 1; }
+          su builder -s /bin/bash -c '
+            set -euo pipefail
+            mkdir -p ~/.ssh && chmod 700 ~/.ssh
+            printf "%s\n" "$KINETIX_PKGS_DEPLOY_KEY" > ~/.ssh/id_ed25519
+            chmod 600 ~/.ssh/id_ed25519
+            ssh-keyscan -t ed25519 github.com >> ~/.ssh/known_hosts 2>/dev/null
+          '
+
+      - name: Build, sign and publish
+        run: |
+          source distro/repo.conf
+          su builder -s /bin/bash -c "
+            set -euo pipefail
+            cd '$GITHUB_WORKSPACE'
+            KINETIX_PKGVER='$KINETIX_PKGVER' \
+            KINETIX_PKGS_REMOTE='git@github.com:${KINETIX_REPO_OWNER}/${KINETIX_REPO_NAME}.git' \
+            GIT_AUTHOR_NAME='KinetixOS CI' GIT_AUTHOR_EMAIL='ci@kinetixos.invalid' \
+            ./distro/publish.sh
+          "
