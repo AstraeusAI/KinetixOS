@@ -142,22 +142,30 @@ build_package() {
     fi
     local signargs=(--sign --key "$trusted")
     (( UNSIGNED )) && signargs=(--nosign)
-    ( cd "$dir" && makepkg --noconfirm -f --nodeps "${signargs[@]}" >/dev/null )
+    # A failing makepkg must stop the publish. Inside this function's $(...)
+    # caller, `set -e` does not propagate, so a failure used to be skipped and
+    # the repo published without that package (seen in CI with the keyring).
+    ( cd "$dir" && makepkg --noconfirm -f --nodeps "${signargs[@]}" >/dev/null ) \
+        || die "makepkg failed for $name"
     printf '%s' "$dir"
 }
 
 step "Building kinetix-$pkgver"
 kinetix_dir="$(build_package kinetix)"
-step "Building kinetix-keyring-$pkgver"
-keyring_dir="$(build_package kinetix-keyring)"
+# The keyring only carries signing keys, so an unsigned repo does not ship it.
+keyring_dir=""
+if (( ! UNSIGNED )); then
+    step "Building kinetix-keyring-$pkgver"
+    keyring_dir="$(build_package kinetix-keyring)"
+fi
 
 # ── assemble the repo ───────────────────────────────────────────────────────
-step "Assembling signed repo"
+step "Assembling the repo"
 REPO_DIR="$OUT/repo/$([ "$(uname -m)" = x86_64 ] && echo x86_64 || uname -m)"
 rm -rf "$OUT/repo"
 mkdir -p "$REPO_DIR"
 shopt -s nullglob
-for pkg in "$kinetix_dir"/*.pkg.tar.zst "$keyring_dir"/*.pkg.tar.zst; do
+for pkg in "$kinetix_dir"/*.pkg.tar.zst ${keyring_dir:+"$keyring_dir"/*.pkg.tar.zst}; do
     cp -f "$pkg" "$REPO_DIR/"
     [[ -f "$pkg.sig" ]] && cp -f "$pkg.sig" "$REPO_DIR/"
 done

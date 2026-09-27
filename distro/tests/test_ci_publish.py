@@ -35,6 +35,14 @@ class CiPublishTests(unittest.TestCase):
         self.assertIn('KINETIX_PKGS_REMOTE', self.publish)
         self.assertIn('git clone --quiet "$PKGS_REMOTE" "$WORK"', self.publish)
 
+    def test_a_failed_package_build_stops_the_publish(self):
+        # set -e does not reach into build_package's $(...) caller: the
+        # failure must be made explicit, or the repo publishes without it
+        self.assertIn('|| die "makepkg failed for $name"', self.publish)
+
+    def test_unsigned_repo_does_not_ship_the_keyring(self):
+        self.assertIn('if (( ! UNSIGNED )); then\n    step "Building kinetix-keyring', self.publish)
+
     def test_publishes_never_overlap(self):
         self.assertIn("cancel-in-progress: false", self.wf)
 
