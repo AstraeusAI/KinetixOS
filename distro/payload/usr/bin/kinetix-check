@@ -29,9 +29,18 @@ done
 
 updates=""
 if command -v checkupdates >/dev/null 2>&1; then
-    # checkupdates prints one "name old -> new" line per package and exits 0
-    # whether or not it found any, so the lines are the signal, not the code.
-    updates="$(checkupdates 2>/dev/null || true)"
+    # checkupdates: exit 0 = updates listed, 2 = none, anything else = it could
+    # not check. Treating a failed check as "up to date" hid a missing
+    # fakeroot on the live ISO, so the bar said current while updates waited.
+    errf="$(mktemp)"
+    trap 'rm -f -- "$errf"' EXIT
+    rc=0
+    updates="$(checkupdates 2>"$errf")" || rc=$?
+    if (( rc != 0 && rc != 2 )); then
+        printf 'kinetix check: could not check for updates: %s\n' \
+            "$(grep -v '^\s*$' "$errf" | tail -1)" >&2
+        exit 1
+    fi
 elif command -v pacman >/dev/null 2>&1; then
     updates="$(pacman -Qu 2>/dev/null || true)"
 else

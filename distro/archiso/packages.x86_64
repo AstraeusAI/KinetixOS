@@ -49,6 +49,7 @@ archinstall
 # bar's update badge depends on. ufw backs `kinetix firewall`; the installed
 # system enables it default-deny at provision time.
 pacman-contrib
+fakeroot
 ufw
 
 # ── Performance/stability tuning (round 14) — safe on every CPU/GPU vendor.

@@ -266,6 +266,15 @@ class UpdateOrderTests(unittest.TestCase):
         self.assertLess(body.index('run "$PACMAN" -Syu --noconfirm'),
                         body.index("\nadopt_kinetix\n"))
 
+    def test_a_failed_check_is_an_error_not_up_to_date(self):
+        # checkupdates exits 0 (updates) / 2 (none) / other (failed); a missing
+        # fakeroot on the live ISO made the check fail silently as "current"
+        chk = (PAYLOAD_BIN / "kinetix-check").read_text()
+        self.assertIn("if (( rc != 0 && rc != 2 )); then", chk)
+        pkgbuild = (DISTRO / "package/kinetix/PKGBUILD").read_text()
+        self.assertIn("fakeroot", pkgbuild)
+        self.assertIn("\nfakeroot\n", (DISTRO / "archiso/packages.x86_64").read_text())
+
     def test_installed_version_file_is_the_package_version(self):
         pub = (DISTRO / "publish.sh").read_text()
         self.assertIn('printf \'%s\\n\' "$pkgver" > "$TREE/usr/share/kinetix/version"', pub)

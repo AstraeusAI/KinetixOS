@@ -25,6 +25,7 @@ depends=(
     xdg-desktop-portal xdg-desktop-portal-gtk
     networkmanager
     spectacle ydotool wtype wl-clipboard at-spi2-core
+    fakeroot   # kinetix check: checkupdates syncs its private db under fakeroot
     tesseract tesseract-data-eng imagemagick
     inter-font ttf-jetbrains-mono
     pacman-contrib ufw
