@@ -58,9 +58,15 @@ pages_url="https://${pages_owner_lower}.github.io/${KINETIX_REPO_NAME}"
 [[ -d "$PKG_SRC/kinetix-keyring" ]] || die "missing $PKG_SRC/kinetix-keyring"
 keyring_file="$PKG_SRC/kinetix-keyring/kinetix.gpg"
 [[ -s "$keyring_file" ]] || die "no signing key — run distro/setup-signing.sh first"
-trusted="$(awk -F: 'NF{print $1; exit}' "$PKG_SRC/kinetix-keyring/kinetix-trusted" 2>/dev/null || true)"
-[[ -n "$trusted" ]] || die "kinetix-trusted is empty — re-run distro/setup-signing.sh"
-gpg --list-secret-keys "$trusted" >/dev/null 2>&1 || die "secret key $trusted not in your GPG keyring"
+# Sign with the first trusted key this machine holds the secret for: the
+# maintainer's release key at a desk, the dedicated CI key in GitHub Actions
+# (distro/setup-ci-signing.sh). Every key in kinetix-trusted verifies.
+trusted=""
+while IFS=: read -r kid _; do
+    [[ -n "$kid" ]] || continue
+    if gpg --list-secret-keys "$kid" >/dev/null 2>&1; then trusted="$kid"; break; fi
+done < "$PKG_SRC/kinetix-keyring/kinetix-trusted"
+[[ -n "$trusted" ]] || die "no key in kinetix-trusted has its secret key here — run distro/setup-signing.sh (or setup-ci-signing.sh for CI)"
 printf 'Signing with key %s, version %s\n' "$trusted" "$pkgver"
 
 # ── stage the payload tree the kinetix package installs ─────────────────────

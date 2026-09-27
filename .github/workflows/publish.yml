@@ -13,8 +13,9 @@
 #   git push origin master:stable
 #
 # Secrets (repository settings → Secrets and variables → Actions):
-#   KINETIX_SIGNING_KEY         armored private signing key (gpg --export-secret-keys --armor <key>)
-#   KINETIX_SIGNING_PASSPHRASE  its passphrase
+#   KINETIX_SIGNING_KEY         armored private signing key — the dedicated CI key
+#                               from distro/setup-ci-signing.sh (or your own key)
+#   KINETIX_SIGNING_PASSPHRASE  its passphrase; optional (the CI key has none)
 #   KINETIX_PKGS_DEPLOY_KEY     private half of a write deploy key on kinetix-pkgs
 name: Publish KinetixOS update
 
