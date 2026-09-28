@@ -52,12 +52,24 @@ Item {
             var key = captureKey(tl);
             if (!key) continue;
             if (!root.thumbSources[key]) {
-                TaskRunner.captureThumbnail(tl.uuid, tl.x, tl.y, tl.w, tl.h);
+                // TaskRunner keeps its own cache for the life of the session
+                // (see its comment) — reuse it here so a window already
+                // thumbnailed earlier never gets captured, and re-focused,
+                // again just because it's being hovered again.
+                var cached = TaskRunner.cachedThumbnail(tl.uuid, tl.x, tl.y, tl.w, tl.h);
+                if (cached) root.thumbSources[key] = cached;
+                else TaskRunner.captureThumbnail(tl.uuid, tl.x, tl.y, tl.w, tl.h);
             }
         }
     }
 
-    onGroupChanged: { root.thumbSources = ({}); refreshThumbnails(); }
+    // Not reset to {} here: this used to wipe every cached thumbnail on
+    // every hovered-group change, so simply moving the mouse across the
+    // taskbar forced a fresh capture (two real focus switches — activate
+    // the target, then restore) for every window, every time. Entries are
+    // still keyed by geometry+minimized, so a moved/resized/minimized
+    // window naturally gets a fresh capture on its own.
+    onGroupChanged: refreshThumbnails()
     onOpenChanged: if (open) refreshThumbnails()
 
     Connections {
