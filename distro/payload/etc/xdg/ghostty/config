@@ -1,0 +1,12 @@
+# KinetixOS system-wide Ghostty default (a user's ~/.config/ghostty/config
+# still wins — this only fills in what they haven't set).
+#
+# Ghostty's own default asks "Close this terminal?" whenever a window/tab/
+# split is closed while a foreground process (a shell, an editor, ssh, ...)
+# is still running. The quick-drop-down terminal already turns this off in
+# its own isolated config (shell/terminal/ghostty.conf), but every *normal*
+# Ghostty window — launched from the app launcher, the dock, or `ghostty`
+# on the command line — only ever sees this file plus whatever the user has
+# in ~/.config/ghostty/config, so without an entry here it kept the
+# close-confirmation prompt on for every regular terminal window.
+confirm-close-surface = false

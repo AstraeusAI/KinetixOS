@@ -39,6 +39,10 @@ class WindowThemeTests(unittest.TestCase):
         br = ini(PAYLOAD / "etc/xdg/breezerc")
         self.assertTrue(br.has_option("Common", "ShadowSize"))
 
+    def test_ghostty_close_confirmation_is_off_by_default(self):
+        text = (PAYLOAD / "etc/xdg/ghostty/config").read_text()
+        self.assertIn("confirm-close-surface = false", text)
+
     def test_payload_reaches_both_the_iso_and_the_package(self):
         build = (ROOT / "distro/build-iso.sh").read_text()
         publish = (ROOT / "distro/publish.sh").read_text()
