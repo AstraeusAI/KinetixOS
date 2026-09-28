@@ -6,11 +6,11 @@ import Quickshell.Widgets
 import "../common"
 import "../components"
 
-// Hover preview for one app group: glass card with a per-window identity
-// card, title + state, focus/maximize/close actions per window — the
-// Windows-style hover preview, restyled in Argus glass. No live window
-// thumbnail: see the comment above the identity card below for why that's
-// not just unbuilt but genuinely unavailable to this shell right now.
+// Hover preview for one app group: glass card with a live thumbnail per
+// window. Thumbnails are captured on demand by kinetix-tasks.py via
+// spectacle, cached until the window geometry changes, and restored to the
+// previous focus after capture so hovering the taskbar does not steal the
+// active window.
 Item {
     id: root
 
@@ -35,6 +35,45 @@ Item {
     visible: opacity > 0.01
     Behavior on opacity { NumberAnimation { duration: Theme.durMed; easing.type: Easing.OutQuint } }
     Behavior on scale { NumberAnimation { duration: Theme.durMed; easing.type: Easing.OutQuint } }
+
+    // Thumbnail source cache keyed by uuid + geometry + minimized state.
+    // Populated asynchronously by TaskRunner.capture requests.
+    property var thumbSources: ({})
+
+    function captureKey(tl) {
+        if (!tl) return "";
+        return tl.uuid + "|" + (tl.x || 0) + "," + (tl.y || 0) + "," + (tl.w || 0) + "," + (tl.h || 0) + "|" + (tl.minimized ? 1 : 0);
+    }
+
+    function refreshThumbnails() {
+        if (!root.group || !root.group.items) return;
+        for (var i = 0; i < root.group.items.length; i++) {
+            var tl = root.group.items[i];
+            var key = captureKey(tl);
+            if (!key) continue;
+            if (!root.thumbSources[key]) {
+                TaskRunner.captureThumbnail(tl.uuid, tl.x, tl.y, tl.w, tl.h);
+            }
+        }
+    }
+
+    onGroupChanged: { root.thumbSources = ({}); refreshThumbnails(); }
+    onOpenChanged: if (open) refreshThumbnails()
+
+    Connections {
+        target: TaskRunner
+        function onThumbnailReady(uuid, path) {
+            if (!root.group || !root.group.items) return;
+            for (var i = 0; i < root.group.items.length; i++) {
+                var tl = root.group.items[i];
+                if (tl.uuid === uuid) {
+                    var key = captureKey(tl);
+                    if (key) root.thumbSources[key] = "file://" + path;
+                    return;
+                }
+            }
+        }
+    }
 
     GlassPanel {
         id: card
@@ -114,6 +153,8 @@ Item {
                     readonly property bool focused: tl && tl.active
                     readonly property bool mini: tl && tl.minimized
                     readonly property bool maxed: tl && tl.maximized && !mini
+                    readonly property string thumbKey: root.captureKey(tl)
+                    readonly property string thumbSource: thumbKey && root.thumbSources[thumbKey] ? root.thumbSources[thumbKey] : ""
 
                     Rectangle {
                         anchors.fill: parent
@@ -249,23 +290,13 @@ Item {
                                 }
                             }
 
-                            // App identity card. KWin exposes no window-
-                            // thumbnail capability this shell is authorized
-                            // to use: its ScreenShot2 D-Bus interface (the
-                            // one that could capture an arbitrary background
-                            // window) refuses unauthorized callers —
-                            // confirmed live ("The process is not authorized
-                            // to take a screenshot") — and Spectacle, which
-                            // *is* authorized, can only capture the active
-                            // window or the one under the cursor, neither of
-                            // which is this (usually unfocused) preview
-                            // target without stealing focus first. A prior
-                            // version here tried Quickshell's ScreencopyView
-                            // anyway with plain TaskRunner window data as
-                            // captureSource — never a valid Wayland Toplevel
-                            // handle, so it silently never worked. This is
-                            // an honest design instead of a broken one: it
-                            // doesn't claim to be showing something it isn't.
+                            // Live thumbnail. Spectacle can only capture the
+                            // active window, so kinetix-tasks.py briefly
+                            // activates the target, captures it, then restores
+                            // the previous focus. The result is cached per
+                            // uuid+geometry and refreshed on open/geometry
+                            // change. Minimized windows show a desaturated
+                            // placeholder.
                             Rectangle {
                                 width: parent.width
                                 height: 128
@@ -275,12 +306,20 @@ Item {
                                 border.width: 1
                                 border.color: Theme.alpha(Theme.crimson, 0.22)
 
-                                // Soft glow behind the icon. A true radial
-                                // gradient needs Qt5Compat.GraphicalEffects,
-                                // which nothing else in this shell depends
-                                // on — an ellipse-shaped Rectangle with a
-                                // plain vertical Gradient reads the same at
-                                // this size without adding that dependency.
+                                Image {
+                                    id: thumbImage
+                                    anchors.fill: parent
+                                    anchors.margins: 1
+                                    source: winCard.thumbSource
+                                    fillMode: Image.PreserveAspectCrop
+                                    asynchronous: true
+                                    mipmap: true
+                                    opacity: status === Image.Ready ? (winCard.mini ? 0.55 : 0.95) : 0
+                                    visible: winCard.thumbSource !== "" && status !== Image.Error
+                                    Behavior on opacity { NumberAnimation { duration: Theme.durFast } }
+                                }
+
+                                // Soft glow behind the icon / placeholder.
                                 Rectangle {
                                     width: parent.width * 0.7
                                     height: parent.height * 0.9
@@ -290,11 +329,13 @@ Item {
                                         GradientStop { position: 0.0; color: Theme.alpha(Theme.crimson, winCard.focused ? 0.20 : 0.10) }
                                         GradientStop { position: 1.0; color: "transparent" }
                                     }
+                                    visible: winCard.thumbSource === "" || thumbImage.status !== Image.Ready
                                 }
 
                                 Column {
                                     anchors.centerIn: parent
                                     spacing: 8
+                                    visible: winCard.thumbSource === "" || thumbImage.status !== Image.Ready
                                     IconImage {
                                         anchors.horizontalCenter: parent.horizontalCenter
                                         implicitSize: 52

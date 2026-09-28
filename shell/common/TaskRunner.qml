@@ -25,6 +25,11 @@ QtObject {
 
     readonly property string scriptPath: Quickshell.shellDir + "/../scripts/kinetix-tasks.py"
 
+    // Thumbnail capture happens inline in the stream process. Each request
+    // writes a CAPTURE command; the daemon replies with a thumbnail record
+    // before the next state push. UI layers listen to thumbnailReady.
+    signal thumbnailReady(uuid: string, path: string)
+
     property Process proc: Process {
         command: ["python3", root.scriptPath, "--stream"]
         running: true
@@ -40,6 +45,10 @@ QtObject {
                 if (str === "" || str.charAt(0) !== "{") return;
                 try {
                     var state = JSON.parse(str);
+                    if (state.type === "thumbnail") {
+                        root.thumbnailReady(state.uuid, state.path);
+                        return;
+                    }
                     root.windows = state.windows || [];
                     root.activeUuid = state.activeUuid || "";
                 } catch (e) { /* malformed line — keep last-known state */ }
@@ -54,4 +63,8 @@ QtObject {
         if (uuid) proc.write("MINIMIZE " + uuid + " " + (mini ? "1" : "0") + "\n");
     }
     function toggleMaximize(uuid) { if (uuid) proc.write("MAXIMIZE " + uuid + "\n"); }
+    function captureThumbnail(uuid, x, y, w, h) {
+        if (!uuid) return;
+        proc.write("CAPTURE " + uuid + " " + (x || 0) + " " + (y || 0) + " " + (w || 0) + " " + (h || 0) + "\n");
+    }
 }

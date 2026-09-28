@@ -132,6 +132,7 @@ _JS_LIST = """
         if (!cap || cap === "Desktop" || cap === "Plasma") continue;
         var cls = String(w.resourceClass || "");
         if (cls === "plasmashell" || cls === "quickshell") continue;
+        var g = w.frameGeometry;
         out.push({
             uuid: String(w.internalId || w.windowId || ""),
             caption: cap,
@@ -141,7 +142,11 @@ _JS_LIST = """
             minimized: !!w.minimized,
             maximized: !!(w.maximizeMode && w.maximizeMode !== 0),
             fullscreen: !!w.fullscreen,
-            desktop: w.desktop || 0
+            desktop: w.desktop || 0,
+            x: g ? Math.round(g.x) : 0,
+            y: g ? Math.round(g.y) : 0,
+            w: g ? Math.round(g.width) : 0,
+            h: g ? Math.round(g.height) : 0
         });
     }
     console.info("__MARKER__" + JSON.stringify(out));
@@ -253,6 +258,10 @@ def query_windows():
                     "minimized": bool(w.get("minimized", False)),
                     "maximized": bool(w.get("maximized", False)),
                     "pid": int(w.get("pid", 0)),
+                    "x": int(w.get("x", 0)),
+                    "y": int(w.get("y", 0)),
+                    "w": int(w.get("w", 0)),
+                    "h": int(w.get("h", 0)),
                 })
             return out
         except Exception:
@@ -295,6 +304,10 @@ def query_windows():
             "minimized": minimized,
             "maximized": bool(info.get("maximized", {}).get("data", False)),
             "pid": int(info.get("pid", {}).get("data", 0)),
+            "x": int(info.get("x", {}).get("data", 0)),
+            "y": int(info.get("y", {}).get("data", 0)),
+            "w": int(info.get("width", {}).get("data", 0)),
+            "h": int(info.get("height", {}).get("data", 0)),
         })
     return out
 
@@ -414,6 +427,105 @@ def close_window(uuid):
     return run_kwin_script(js, "CLOSE_", timeout=0.6) is not None
 
 
+def capture_window(uuid, geometry, output_path):
+    """Capture a window thumbnail and crop it to its geometry.
+
+    KWin/Spectacle cannot capture an arbitrary background window, so we
+    briefly activate the target, use spectacle -a (active window), crop to
+    the reported geometry with ImageMagick, then restore the previous focus.
+    Geometry is in KWin logical pixels; spectacle screenshots are in physical
+    pixels, so we scale the crop region by the output scale.
+    """
+    import shutil
+
+    if not shutil.which("spectacle"):
+        return {"ok": False, "error": "spectacle not installed"}
+
+    x, y, w, h = geometry
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    # Remember current active window so we can restore focus afterwards.
+    prev_active = None
+    state_before = query_windows()
+    if state_before:
+        for win in state_before:
+            if win.get("active"):
+                prev_active = win.get("uuid")
+                break
+
+    # Activate the target window.
+    activate_window(uuid)
+
+    # Wait a short moment for the compositor to present the activated window.
+    time.sleep(0.08)
+
+    # Capture the active window.
+    tmp_capture = TMP / f"kinetix-thumb-{uuid}-{os.getpid()}.png"
+    cmd = ["spectacle", "-b", "-n", "-a", "-o", str(tmp_capture)]
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=8)
+    except subprocess.TimeoutExpired:
+        _restore_focus(prev_active)
+        return {"ok": False, "error": "spectacle timed out capturing active window"}
+    if not tmp_capture.exists():
+        _restore_focus(prev_active)
+        return {"ok": False, "error": "spectacle failed to write capture file"}
+
+    # Crop to the window geometry.
+    scale = _display_scale()
+    crop_geom = f"{int(round(w * scale))}x{int(round(h * scale))}+{int(round(x * scale))}+{int(round(y * scale))}"
+    conv = shutil.which("magick") or shutil.which("convert")
+    crop_ok = False
+    if conv:
+        try:
+            cr = subprocess.run(
+                [conv, str(tmp_capture), "-crop", crop_geom, "+repage", str(output_path)],
+                capture_output=True,
+                text=True,
+                timeout=15,
+            )
+            crop_ok = cr.returncode == 0 and output_path.exists()
+        except Exception:
+            crop_ok = False
+
+    if not crop_ok:
+        # Fall back to the full active-window capture if cropping fails.
+        import shutil as _shutil
+        _shutil.copyfile(str(tmp_capture), str(output_path))
+
+    try:
+        tmp_capture.unlink(missing_ok=True)
+    except OSError:
+        pass
+
+    _restore_focus(prev_active)
+
+    return {"ok": True, "path": str(output_path)}
+
+
+def _display_scale():
+    """Best-effort display scale factor for physical-pixel cropping."""
+    try:
+        r = subprocess.run(
+            ["kscreen-doctor", "-j"], capture_output=True, text=True, timeout=3
+        )
+        if r.returncode == 0:
+            doc = json.loads(r.stdout)
+            for o in doc.get("outputs", []):
+                if o.get("connected") and o.get("enabled"):
+                    return float(o.get("scale") or 1.0) or 1.0
+    except Exception:
+        pass
+    return 1.0
+
+
+def _restore_focus(uuid):
+    """Best-effort restore of the previously active window after a capture."""
+    if uuid:
+        activate_window(uuid)
+
+
 def format_state(windows):
     active_uuid = ""
     for w in windows:
@@ -458,6 +570,30 @@ def run_stream():
             elif cmd.startswith("CLOSE "):
                 target_uuid = cmd.split(" ", 1)[1].strip()
                 close_window(target_uuid)
+            elif cmd.startswith("CAPTURE "):
+                parts = cmd.split(" ", 5)
+                if len(parts) == 6:
+                    target_uuid = parts[1].strip()
+                    try:
+                        geom = (
+                            int(parts[2].strip()),
+                            int(parts[3].strip()),
+                            int(parts[4].strip()),
+                            int(parts[5].strip()),
+                        )
+                    except ValueError:
+                        geom = (0, 0, 0, 0)
+                    cache_dir = Path.home() / ".cache" / "argus" / "thumbs"
+                    cache_dir.mkdir(parents=True, exist_ok=True)
+                    out_path = cache_dir / f"{target_uuid}.png"
+                    res = capture_window(target_uuid, geom, out_path)
+                    print(json.dumps({
+                        "type": "thumbnail",
+                        "uuid": target_uuid,
+                        "path": str(out_path) if res.get("ok") else "",
+                        "ok": res.get("ok", False),
+                        "error": res.get("error", ""),
+                    }))
             # Re-probe immediately following any action
             windows = query_windows()
             state_str = format_state(windows)
@@ -494,6 +630,19 @@ def main():
             return
         elif arg == "--close" and len(sys.argv) > 2:
             close_window(sys.argv[2])
+            return
+        elif arg == "--capture" and len(sys.argv) > 6:
+            geom = (
+                int(sys.argv[3]),
+                int(sys.argv[4]),
+                int(sys.argv[5]),
+                int(sys.argv[6]),
+            )
+            cache_dir = Path.home() / ".cache" / "argus" / "thumbs"
+            cache_dir.mkdir(parents=True, exist_ok=True)
+            out_path = cache_dir / f"{sys.argv[2]}.png"
+            res = capture_window(sys.argv[2], geom, out_path)
+            print(json.dumps(res))
             return
         elif arg == "--stream":
             run_stream()
