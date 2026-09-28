@@ -546,9 +546,21 @@ def run_stream():
     last_state_str = format_state(windows)
     print(last_state_str)
 
+    # Every idle poll costs a KWin script load/start/unload round trip over
+    # D-Bus PLUS a `journalctl --user` scrape to read the script's printed
+    # result back (see run_kwin_script/_journal_marker above) — four-plus
+    # subprocess spawns. At 450ms that's a near-continuous background load
+    # (confirmed live: KWin's own log fills with a fresh "js: KINETIX_WIN_..."
+    # line every ~1.3s even with zero windows open) that competes with the
+    # compositor for CPU and was implicated in reports of random flashing/
+    # stutter switching windows. Any real user action (activate/close/...)
+    # already forces an immediate re-probe right after it runs, so idle
+    # polling only needs to catch external changes (a window opened/closed
+    # by something other than this daemon) — safe to back it off hard.
+    IDLE_POLL_SECONDS = 2.0
     while True:
-        # Check stdin for incoming commands with 450ms timeout
-        rlist, _, _ = select.select([sys.stdin], [], [], 0.45)
+        # Check stdin for incoming commands, polling at IDLE_POLL_SECONDS
+        rlist, _, _ = select.select([sys.stdin], [], [], IDLE_POLL_SECONDS)
         if rlist:
             line = sys.stdin.readline()
             if not line:
