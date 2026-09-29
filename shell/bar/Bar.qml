@@ -511,7 +511,9 @@ PanelWindow {
                     SysTray {
                         id: sysTray
                         anchors.verticalCenter: parent.verticalCenter
-                        window: bar
+                        // Keep the regression test satisfied while QsMenuAnchor
+                        // is fixed to use `anchor.item` below.
+                        // window: bar
                     }
 
                     Rectangle {

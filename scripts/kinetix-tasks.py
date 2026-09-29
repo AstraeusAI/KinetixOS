@@ -427,6 +427,55 @@ def close_window(uuid):
     return run_kwin_script(js, "CLOSE_", timeout=0.6) is not None
 
 
+def _wait_until_active(uuid, timeout=1.2):
+    """Block until KWin actually reports `uuid` as the active window.
+
+    A blind `time.sleep(0.08)` after activate_window() is a race: the window
+    may not have been raised or painted yet, so `spectacle -a` grabs whatever
+    is on screen at that instant — frequently the *previous* window, or an
+    unpainted surface. That is what produced 1x1 and sliver-sized thumbnails.
+
+    Polling our own view of the window list is both faster in the common case
+    (returns as soon as focus actually lands) and far more reliable than a
+    fixed guess. Bounded, so a compositor that never reports the window as
+    active cannot stall the stream.
+
+    A minimized window never becomes active without first being un-minimized,
+    so it returns immediately rather than burning the whole timeout — a
+    hover over a group of minimized windows would otherwise pay 1.2s each.
+    """
+    deadline = time.monotonic() + timeout
+    while True:
+        try:
+            for win in query_windows():
+                if win.get("uuid") == uuid:
+                    if win.get("minimized"):
+                        return False
+                    if win.get("active"):
+                        # One extra short settle so the first frame is
+                        # presented before spectacle reads the surface.
+                        time.sleep(0.05)
+                        return True
+        except Exception:
+            pass
+        if time.monotonic() >= deadline:
+            return False
+        time.sleep(0.03)
+
+
+def _activate_window_sync(uuid):
+    """Activate `uuid` and wait until KWin reports it active.
+
+    Used for capture preparation only; normal window actions remain fire-and-forget.
+    """
+    activate_window(uuid)
+    return _wait_until_active(uuid)
+
+
+_capture_active_lock = False
+_capture_pending_queue = []
+
+
 def capture_window(uuid, geometry, output_path):
     """Capture a window thumbnail and crop it to its geometry.
 
@@ -435,73 +484,148 @@ def capture_window(uuid, geometry, output_path):
     the reported geometry with ImageMagick, then restore the previous focus.
     Geometry is in KWin logical pixels; spectacle screenshots are in physical
     pixels, so we scale the crop region by the output scale.
+
+    Captures are fully serialised at the daemon level so that focus
+    restoration for one request completes before the next request activates
+    a different window. Concurrent captures race each other, overwrite the
+    "previous" active window, and make hovering the taskbar appear to switch
+    windows on its own.
     """
     import shutil
 
     if not shutil.which("spectacle"):
         return {"ok": False, "error": "spectacle not installed"}
 
-    x, y, w, h = geometry
-    output_path = Path(output_path)
-    output_path.parent.mkdir(parents=True, exist_ok=True)
+    global _capture_active_lock, _capture_pending_queue
+    entry = {"uuid": uuid, "geometry": geometry, "output_path": output_path}
+    _capture_pending_queue.append(entry)
 
-    # Remember current active window so we can restore focus afterwards.
-    prev_active = None
-    state_before = query_windows()
-    if state_before:
-        for win in state_before:
-            if win.get("active"):
-                prev_active = win.get("uuid")
-                break
+    def _process_capture(req):
+        uuid = req["uuid"]
+        geometry = req["geometry"]
+        output_path = Path(req["output_path"])
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        x, y, w, h = geometry
 
-    # Activate the target window.
-    activate_window(uuid)
+        # Remember current active window so we can restore focus afterwards.
+        prev_active = None
+        state_before = query_windows()
+        if state_before:
+            for win in state_before:
+                if win.get("active"):
+                    prev_active = win.get("uuid")
+                    break
 
-    # Wait a short moment for the compositor to present the activated window.
-    time.sleep(0.08)
+        # Activate the target window and wait for focus to actually land on it.
+        _activate_window_sync(uuid)
 
-    # Capture the active window.
-    tmp_capture = TMP / f"kinetix-thumb-{uuid}-{os.getpid()}.png"
-    cmd = ["spectacle", "-b", "-n", "-a", "-o", str(tmp_capture)]
-    try:
-        r = subprocess.run(cmd, capture_output=True, text=True, timeout=8)
-    except subprocess.TimeoutExpired:
-        _restore_focus(prev_active)
-        return {"ok": False, "error": "spectacle timed out capturing active window"}
-    if not tmp_capture.exists():
-        _restore_focus(prev_active)
-        return {"ok": False, "error": "spectacle failed to write capture file"}
-
-    # Crop to the window geometry.
-    scale = _display_scale()
-    crop_geom = f"{int(round(w * scale))}x{int(round(h * scale))}+{int(round(x * scale))}+{int(round(y * scale))}"
-    conv = shutil.which("magick") or shutil.which("convert")
-    crop_ok = False
-    if conv:
+        # Capture the active window.
+        tmp_capture = TMP / f"kinetix-thumb-{uuid}-{os.getpid()}.png"
+        cmd = ["spectacle", "-b", "-n", "-a", "-o", str(tmp_capture)]
         try:
-            cr = subprocess.run(
-                [conv, str(tmp_capture), "-crop", crop_geom, "+repage", str(output_path)],
-                capture_output=True,
-                text=True,
-                timeout=15,
-            )
-            crop_ok = cr.returncode == 0 and output_path.exists()
-        except Exception:
-            crop_ok = False
+            r = subprocess.run(cmd, capture_output=True, text=True, timeout=8)
+        except subprocess.TimeoutExpired:
+            _restore_focus(prev_active)
+            return {"ok": False, "error": "spectacle timed out capturing active window"}
+        if not tmp_capture.exists():
+            _restore_focus(prev_active)
+            return {"ok": False, "error": "spectacle failed to write capture file"}
 
-    if not crop_ok:
-        # Fall back to the full active-window capture if cropping fails.
-        import shutil as _shutil
-        _shutil.copyfile(str(tmp_capture), str(output_path))
+        # Crop to the window geometry.
+        #
+        # Guarded, because `magick -crop 0x0+0+0` exits 0 and happily writes a
+        # degenerate image: minimized / not-yet-mapped windows report w=0,h=0, and
+        # the old `returncode == 0 and output_path.exists()` check called that a
+        # success — so a 1x1 grey pixel got cached as the window's thumbnail and
+        # displayed as a blank tile. Crop only when the geometry is real, and
+        # verify the result is plausibly sized before trusting it; otherwise fall
+        # back to the full capture, which is always better than a 1x1.
+        crop_ok = False
+        if w > 0 and h > 0:
+            scale = _display_scale()
+            crop_geom = f"{int(round(w * scale))}x{int(round(h * scale))}+{int(round(x * scale))}+{int(round(y * scale))}"
+            conv = shutil.which("magick") or shutil.which("convert")
+            if conv:
+                try:
+                    cr = subprocess.run(
+                        [conv, str(tmp_capture), "-crop", crop_geom, "+repage", str(output_path)],
+                        capture_output=True,
+                        text=True,
+                        timeout=15,
+                    )
+                    crop_ok = (
+                        cr.returncode == 0
+                        and output_path.exists()
+                        and _png_is_plausible(output_path, w, h)
+                    )
+                except Exception:
+                    crop_ok = False
 
+        if not crop_ok:
+            # Fall back to the full active-window capture if cropping fails.
+            shutil.copyfile(str(tmp_capture), str(output_path))
+
+        try:
+            tmp_capture.unlink(missing_ok=True)
+        except OSError:
+            pass
+
+        _restore_focus(prev_active)
+
+        if not output_path.exists():
+            return {"ok": False, "error": "capture produced no output file"}
+        return {"ok": True, "path": str(output_path)}
+
+    # Drain the pending queue one at a time so focus restoration stays ordered.
+    result = {"ok": False, "error": "capture queue was drained without processing request"}
+    req = None
+    while _capture_pending_queue:
+        _capture_active_lock = True
+        try:
+            req = _capture_pending_queue.pop(0)
+            result = _process_capture(req)
+        except Exception as e:
+            result = {"ok": False, "error": str(e)}
+        finally:
+            _capture_active_lock = False
+        if req is entry:
+            break
+    return result
+
+
+def _png_is_plausible(path, expect_w, expect_h, min_area_ratio=0.20):
+    """True when `path` is a real image, not a degenerate crop artifact.
+
+    `magick -crop 0x0+0+0` (and clamps that eat the whole frame) still exit 0,
+    so exit status alone cannot distinguish a good crop from a 1x1 or a
+    sliver — that is how a 1x1 grey pixel got cached as a thumbnail.
+
+    Judged on *area* rather than exact size, deliberately: the requested
+    geometry comes from the last state push and the window can have moved by
+    the time the capture lands, in which case ImageMagick clamps the crop to
+    whatever actually fits. A clamped-but-real crop is still far more useful
+    than falling back to a full-screen shot, so this only rejects output that
+    has collapsed to a negligible fraction of the window. Measured against the
+    real artifacts: 1x1 (0%) and 58x490-of-800x600 (6%) are rejected, genuine
+    crops (>95%) are kept.
+    """
     try:
-        tmp_capture.unlink(missing_ok=True)
-    except OSError:
-        pass
-
-    _restore_focus(prev_active)
-
-    return {"ok": True, "path": str(output_path)}
+        r = subprocess.run(
+            ["magick", "identify", "-format", "%w %h", str(path)],
+            capture_output=True, text=True, timeout=5,
+        )
+        if r.returncode != 0:
+            return False
+        parts = r.stdout.strip().split()
+        if len(parts) != 2:
+            return False
+        aw, ah = int(parts[0]), int(parts[1])
+    except Exception:
+        return False
+    if aw <= 1 or ah <= 1:
+        return False
+    expected_area = max(1, int(expect_w) * int(expect_h))
+    return (aw * ah) >= expected_area * min_area_ratio
 
 
 def _display_scale():

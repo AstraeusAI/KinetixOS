@@ -222,14 +222,15 @@ PanelWindow {
 
     Timer {
         id: previewDelay
-        interval: 380
+        interval: 420
         onTriggered: {
-            if (taskbar.previewGroup && !taskbar.menuOpen) taskbar.previewOpen = true;
+            if (taskbar.previewGroup && !taskbar.menuOpen && taskbar.previewAnchor && taskbar.previewAnchor.currentHovered)
+                taskbar.previewOpen = true;
         }
     }
     Timer {
         id: previewGrace
-        interval: 220
+        interval: 180
         onTriggered: {
             if (!previewCard.hovered && !anyTaskHovered()) taskbar.previewOpen = false;
         }
@@ -245,14 +246,20 @@ PanelWindow {
 
     function onTaskHovered(group, anchorItem) {
         if (taskbar.menuOpen) return;
-        if (taskbar.previewGroup !== group) {
+        // Use a stable group key for comparisons; `group` is freshly rebuilt
+        // on every TaskRunner push, so object identity changes every second.
+        var newKey = group ? group.key : "";
+        var oldKey = taskbar.previewGroup ? taskbar.previewGroup.key : "";
+        if (newKey !== oldKey) {
             taskbar.previewGroup = group;
             taskbar.previewAnchor = anchorItem;
             taskbar.previewOpen = false;
             previewDelay.restart();
         } else {
             previewGrace.stop();
-            if (taskbar.previewGroup && !previewDelay.running && !taskbar.menuOpen)
+            // Re-arm only if the anchor is still hovered; otherwise let the
+            // grace timer close the preview when the mouse truly leaves.
+            if (anchorItem && anchorItem.currentHovered && !previewDelay.running && !taskbar.menuOpen)
                 taskbar.previewOpen = true;
         }
     }
@@ -566,7 +573,6 @@ PanelWindow {
                         required property string itemsJson
                         required property int index
                         anchors.verticalCenter: parent.verticalCenter
-                        anchorWindow: taskbar
                         group: ({ "key": key, "appId": appId, "name": name, "icon": icon, "items": JSON.parse(itemsJson) })
                         onHovered: function(g) { taskbar.onTaskHovered(g, taskDelegate); }
                         onUnhovered: taskbar.onTaskUnhovered()
@@ -681,7 +687,6 @@ PanelWindow {
     PopupWindow {
         id: deskTip
         property bool shown: false
-        anchor.window: taskbar
         anchor.item: deskBtn
         anchor.edges: Edges.Top
         anchor.gravity: Edges.Top
@@ -738,7 +743,6 @@ PanelWindow {
     PopupWindow {
         id: launcherTip
         property bool shown: false
-        anchor.window: taskbar
         anchor.item: launcherBtn
         anchor.edges: Edges.Top
         anchor.gravity: Edges.Top
@@ -769,7 +773,6 @@ PanelWindow {
     // ── hover preview popup (opens upward, above the bar) ───────
     PopupWindow {
         id: previewPop
-        anchor.window: taskbar
         anchor.item: taskbar.previewAnchor
         anchor.edges: Edges.Top
         anchor.gravity: Edges.Top
@@ -780,7 +783,6 @@ PanelWindow {
         TaskPreview {
             id: previewCard
             group: taskbar.previewGroup
-            popupWindow: previewPop
             open: previewPop.visible
             onFocusWindow: function(tl) { TaskStore.activate(tl); taskbar.hidePreviewNow(); }
             onMinimizeWindow: function(tl) { TaskStore.setMinimized(tl, true); }
@@ -797,7 +799,6 @@ PanelWindow {
     // ── right-click window menu (opens upward, above the bar) ───
     PopupWindow {
         id: menuPop
-        anchor.window: taskbar
         anchor.item: taskbar.menuAnchor
         anchor.edges: Edges.Top
         anchor.gravity: Edges.Top

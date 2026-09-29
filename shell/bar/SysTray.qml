@@ -6,7 +6,6 @@ import "../common"
 Row {
     id: root
     spacing: Theme.s1
-    property var window          // bar window, for menu anchoring
     property Item menuItem: null
     readonly property int count: trayRep.count
 
@@ -54,7 +53,11 @@ Row {
 
     QsMenuAnchor {
         id: menu
-        anchor.window: root.window
+        // PopupAnchor's `window` and `item` properties are mutually exclusive
+        // (setting one unsets the other). The original `window: bar` was dead
+        // because it was immediately overwritten by the old `anchor.item`. Use
+        // `anchor.item` consistently: the menu anchors to the tray item that
+        // was right-clicked.
         anchor.item: root.menuItem
         anchor.edges: Edges.Bottom
         anchor.gravity: Edges.Bottom

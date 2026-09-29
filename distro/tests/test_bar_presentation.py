@@ -11,6 +11,7 @@ class BarPresentationTests(unittest.TestCase):
     def setUpClass(cls):
         cls.bar = (ROOT / "shell/bar/Bar.qml").read_text()
         cls.sys_monitor = (ROOT / "shell/bar/SysMonitor.qml").read_text()
+        cls.sys_tray = (ROOT / "shell/bar/SysTray.qml").read_text()
         cls.sys_popup = (ROOT / "shell/overlay/SysPopup.qml").read_text()
         cls.app_center = (ROOT / "shell/bar/AppCenterCapsule.qml").read_text()
         cls.now_playing = (ROOT / "shell/bar/NowPlaying.qml").read_text()
@@ -45,7 +46,8 @@ class BarPresentationTests(unittest.TestCase):
         self.assertIn("root.switchTo(parent.modelData.id)", self.workspaces)
         self.assertIn("s.audio.muted = !s.audio.muted", self.status_cluster)
         self.assertIn("s.audio.volume = Math.max", self.status_cluster)
-        self.assertIn("window: bar", self.bar)
+        # SysTray's QsMenuAnchor now anchors by item, not by a `window` property.
+        self.assertIn("anchor.item: root.menuItem", self.sys_tray)
         self.assertIn("root.player.previous()", self.now_playing)
         self.assertIn("root.player.togglePlaying()", self.now_playing)
         self.assertIn("root.player.next()", self.now_playing)

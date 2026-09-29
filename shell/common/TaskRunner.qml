@@ -17,6 +17,7 @@ QtObject {
 
     property var windows: []
     property string activeUuid: ""
+    property string _lastPreviewCaptureUuid: ""
     readonly property var activeWindow: {
         for (var i = 0; i < windows.length; i++)
             if (windows[i].uuid === activeUuid) return windows[i];
@@ -99,8 +100,17 @@ QtObject {
         // Already cached, or a capture for this exact window+geometry is
         // already in flight — never fire a second real focus-switch for it.
         if (root.thumbCache[key] || root.pendingThumbKeys[key]) return;
+        // Serialise captures so a previous capture's focus restoration is
+        // fully complete before we start the next one. Interleaving them
+        // made the daemon restore focus to the wrong window and caused
+        // taskbar hover to feel like it was randomly switching windows.
+        if (root._lastPreviewCaptureUuid !== "" && root._lastPreviewCaptureUuid !== uuid &&
+            root.pendingKeyForUuid[root._lastPreviewCaptureUuid]) {
+            return;
+        }
         root.pendingThumbKeys[key] = true;
         root.pendingKeyForUuid[uuid] = key;
+        root._lastPreviewCaptureUuid = uuid;
         proc.write("CAPTURE " + uuid + " " + (x || 0) + " " + (y || 0) + " " + (w || 0) + " " + (h || 0) + "\n");
     }
 }
