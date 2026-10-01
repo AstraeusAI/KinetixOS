@@ -15,9 +15,12 @@ Item {
     id: root
 
     property var group: null
-    // This preview is itself rendered inside a PopupWindow. Anchor nested
-    // tooltips to that Quickshell window, not Window.window's proxied QWindow.
-    property var popupWindow: null
+    // This preview is itself rendered inside a PopupWindow (Taskbar's
+    // previewPop). A nested tooltip's `anchor.item` therefore resolves its
+    // host window to that preview popup — not to the underlying taskbar —
+    // which is the correct surface: the pointer is already over the card.
+    // That is why every tooltip in the shell anchors by `anchor.item` alone
+    // and never by `anchor.window` (see components/CloseButton.qml).
     property bool open: false
     property bool hovered: previewHover.hovered || listHover.hovered
 
@@ -28,6 +31,14 @@ Item {
 
     implicitWidth: 304
     implicitHeight: card.height
+    // This Item is the PopupWindow's entire content (Taskbar.qml's
+    // previewPop) with nothing else to size that surface. A plain Item does
+    // not bind its actual width/height to implicitWidth/implicitHeight on
+    // its own (the same trap NotifCard.qml already works around) — without
+    // this, the popup surface kept its unset default geometry while the
+    // 304px card rendered past its edge, i.e. exactly the "cut off" preview.
+    width: implicitWidth
+    height: implicitHeight
 
     opacity: open ? 1 : 0
     scale: open ? 1 : 0.94
@@ -45,6 +56,44 @@ Item {
         return tl.uuid + "|" + (tl.x || 0) + "," + (tl.y || 0) + "," + (tl.w || 0) + "," + (tl.h || 0) + "|" + (tl.minimized ? 1 : 0);
     }
 
+    // Every write to `thumbSources` goes through here.
+    //
+    // Writing `root.thumbSources[key] = v` mutates the underlying JS object in
+    // place, which does NOT emit a change signal for the `thumbSources`
+    // property. Every card reads it through a *binding* —
+    //     readonly property string thumbSource:
+    //         thumbKey && root.thumbSources[thumbKey] ? root.thumbSources[thumbKey] : ""
+    // — so the capture arrived, the entry was written, and the binding kept
+    // its stale "" forever. The card then showed the placeholder icon
+    // permanently: this was why the hover preview never displayed a
+    // thumbnail even though kinetix-tasks.py was capturing and writing
+    // ~/.cache/argus/thumbs/<uuid>.png correctly the whole time.
+    // (Confirmed by probe: after an in-place write, the key is present in the
+    // object but the bound property still reads "".)
+    //
+    // Reassigning the property is what actually notifies, so copy-and-set
+    // rather than mutate. The map holds a handful of entries, so the copy is
+    // free. This is the same trap AgentState.qml and Taskbar.qml already
+    // worked around for their message/row models.
+    //
+    // An empty `value` DELETES the entry rather than storing a placeholder.
+    // That matters because refreshThumbnails() only re-requests a capture
+    // when `!root.thumbSources[key]` — a failed capture reported by the
+    // daemon arrives with ok=false and path="", and storing "file://" would
+    // be a truthy value that permanently suppressed every retry for that
+    // window+geometry.
+    function setThumb(key, value) {
+        if (!key) return;
+        var next = {};
+        for (var k in root.thumbSources) {
+            if (Object.prototype.hasOwnProperty.call(root.thumbSources, k))
+                next[k] = root.thumbSources[k];
+        }
+        if (value === "" || value === null || value === undefined) delete next[key];
+        else next[key] = value;
+        root.thumbSources = next;
+    }
+
     function refreshThumbnails() {
         if (!root.group || !root.group.items) return;
         for (var i = 0; i < root.group.items.length; i++) {
@@ -57,7 +106,7 @@ Item {
                 // thumbnailed earlier never gets captured, and re-focused,
                 // again just because it's being hovered again.
                 var cached = TaskRunner.cachedThumbnail(tl.uuid, tl.x, tl.y, tl.w, tl.h);
-                if (cached) root.thumbSources[key] = cached;
+                if (cached) root.setThumb(key, cached);
                 else TaskRunner.captureThumbnail(tl.uuid, tl.x, tl.y, tl.w, tl.h);
             }
         }
@@ -80,7 +129,9 @@ Item {
                 var tl = root.group.items[i];
                 if (tl.uuid === uuid) {
                     var key = captureKey(tl);
-                    if (key) root.thumbSources[key] = "file://" + path;
+                    // Empty path means the daemon could not capture (ok=false);
+                    // clear rather than cache, so hovering again retries.
+                    if (key) root.setThumb(key, path ? "file://" + path : "");
                     return;
                 }
             }
@@ -264,13 +315,12 @@ Item {
                                     PopupWindow {
                                         id: winCloseTip
                                         property bool shown: false
-                                        anchor.window: root.popupWindow
                                         anchor.item: winClose
                                         anchor.edges: Edges.Top
                                         anchor.gravity: Edges.Top
                                         anchor.adjustment: PopupAdjustment.Slide
                                         anchor.margins.bottom: 6
-                                        visible: shown && root.popupWindow !== null
+                                        visible: shown
                                         color: "transparent"
                                         implicitWidth: winCloseTipText.implicitWidth + 16
                                         implicitHeight: winCloseTipText.implicitHeight + 10

@@ -507,14 +507,27 @@ def capture_window(uuid, geometry, output_path):
         output_path.parent.mkdir(parents=True, exist_ok=True)
         x, y, w, h = geometry
 
-        # Remember current active window so we can restore focus afterwards.
+        # Remember current active window so we can restore focus afterwards,
+        # and whether the target is minimized.
         prev_active = None
+        target_minimized = False
         state_before = query_windows()
         if state_before:
             for win in state_before:
                 if win.get("active"):
                     prev_active = win.get("uuid")
-                    break
+                if win.get("uuid") == uuid and win.get("minimized"):
+                    target_minimized = True
+
+        # activate_window() unconditionally un-minimizes its target — correct
+        # for a real click, wrong for a passive hover preview, where it was
+        # the window "randomly" popping open on screen with nothing left to
+        # re-minimize it afterward (_restore_focus only re-activates the
+        # previous window, it never re-minimizes this one). Skip the capture
+        # entirely for a minimized window instead; the card already falls
+        # back to its icon placeholder (see winCard.mini in TaskPreview.qml).
+        if target_minimized:
+            return {"ok": False, "error": "window is minimized"}
 
         # Activate the target window and wait for focus to actually land on it.
         _activate_window_sync(uuid)
