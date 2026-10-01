@@ -25,10 +25,15 @@ layout(std140, binding = 0) uniform buf {
     float pulse;    // transient brightness burst 0..1
 };
 
-// Google red / green / blue, OKLab
-const vec3 RED   = vec3(0.6257,  0.1799,  0.1000);
-const vec3 GREEN = vec3(0.6475, -0.1367,  0.0838);
-const vec3 BLUE  = vec3(0.6304, -0.0314, -0.1773);
+// Google red / green / blue, OKLab. Chroma (a, b) pushed ~18% past the
+// literal brand values — the brand swatches are tuned for flat print/UI
+// fills, but blended through fbm warp and the soft-shoulder tonemap below,
+// that chroma reads as muted/muddy on screen. This keeps the same hues and
+// lightness (so it's still recognizably the brand palette) while staying
+// vivid after everything downstream has had its desaturating say.
+const vec3 RED   = vec3(0.6257,  0.2123,  0.1180);
+const vec3 GREEN = vec3(0.6475, -0.1613,  0.0988);
+const vec3 BLUE  = vec3(0.6304, -0.0371, -0.2092);
 
 vec3 oklabToLinear(vec3 c) {
     float l_ = c.x + 0.3963377774 * c.y + 0.2158037573 * c.z;
@@ -102,12 +107,18 @@ void main() {
     float h = along / period - time * 0.055 + 0.55 * warp + across / 420.0;
     vec3 col = linearToSrgb(palette(h));
 
-    // brightness plumes drifting through the glass
-    float plume = smoothstep(0.25, 0.85, fbm(vec2(across / 45.0 + 3.0, along / (110.0 * scale) + time * 0.11)));
+    // brightness plumes drifting through the glass. A wide smoothstep range
+    // (vs. the old 0.25..0.85) turns fbm's blotchy mid-tones into soft,
+    // continuous drifts instead of patches with a visible edge — reads as
+    // fluid motion rather than a grainy/noisy texture.
+    float plume = smoothstep(0.12, 0.95, fbm(vec2(across / 45.0 + 3.0, along / (110.0 * scale) + time * 0.11)));
     // a slow bright band travelling the length of the surface
     float band = exp(-pow((fract(time * 0.045) * (len + 240.0) - 120.0 - along) / 90.0, 2.0));
-    // the outline catches more light
-    float rim = exp(d / 2.2) * 0.9 + exp(d / 9.0) * 0.35;
+    // the outline catches more light. The old long tail (exp(d/9.0)) reached
+    // many px into the interior on a tall surface, reading as a soft haze
+    // bleeding off the edge rather than a crisp rim; pulled in tight so the
+    // light field has a defined edge instead of a blur.
+    float rim = exp(d / 2.2) * 0.9 + exp(d / 4.0) * 0.20;
 
     float glow = 0.20 + 0.34 * plume + 0.22 * band;
     vec3 rgb = col * (glow + rim) * gain * (1.0 + 0.6 * pulse);
@@ -115,6 +126,13 @@ void main() {
 
     // soft shoulder + dither (no banding in the long gradients)
     rgb = (vec3(1.0) - exp(-rgb * 1.4)) / (1.0 - exp(-1.4));
+    // The shoulder above is concave (shadow-lifting), which boosts a
+    // channel's dimmer siblings more than its brightest one — it pulls
+    // every hue a little toward white. Re-saturating around the channel's
+    // own luminance afterward undoes exactly that, without touching the
+    // anti-banding behaviour the shoulder exists for.
+    float luma = dot(rgb, vec3(0.299, 0.587, 0.114));
+    rgb = clamp(luma + (rgb - luma) * 1.22, 0.0, 1.0);
     float n = hash(gl_FragCoord.xy + fract(time * 7.0) * 61.0) + hash(gl_FragCoord.yx * 1.37) - 1.0;
     rgb = clamp(rgb + n / 255.0, 0.0, 1.0) * inside;
 
