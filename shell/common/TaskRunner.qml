@@ -17,7 +17,6 @@ QtObject {
 
     property var windows: []
     property string activeUuid: ""
-    property string _lastPreviewCaptureUuid: ""
     readonly property var activeWindow: {
         for (var i = 0; i < windows.length; i++)
             if (windows[i].uuid === activeUuid) return windows[i];
@@ -100,17 +99,17 @@ QtObject {
         // Already cached, or a capture for this exact window+geometry is
         // already in flight — never fire a second real focus-switch for it.
         if (root.thumbCache[key] || root.pendingThumbKeys[key]) return;
-        // Serialise captures so a previous capture's focus restoration is
-        // fully complete before we start the next one. Interleaving them
-        // made the daemon restore focus to the wrong window and caused
-        // taskbar hover to feel like it was randomly switching windows.
-        if (root._lastPreviewCaptureUuid !== "" && root._lastPreviewCaptureUuid !== uuid &&
-            root.pendingKeyForUuid[root._lastPreviewCaptureUuid]) {
-            return;
-        }
+        // No client-side queueing/serialising needed for a *different*
+        // uuid: kinetix-tasks.py's stream loop reads and fully processes
+        // one stdin command (including the capture's focus restoration)
+        // before it ever reads the next line, so writes here are already
+        // serialised in arrival order by the daemon itself. An earlier
+        // version of this function refused to send a second uuid's capture
+        // at all while one was pending, with nothing left to retry it —
+        // in any group with more than one window, every window after the
+        // first silently never got a thumbnail.
         root.pendingThumbKeys[key] = true;
         root.pendingKeyForUuid[uuid] = key;
-        root._lastPreviewCaptureUuid = uuid;
         proc.write("CAPTURE " + uuid + " " + (x || 0) + " " + (y || 0) + " " + (w || 0) + " " + (h || 0) + "\n");
     }
 }
